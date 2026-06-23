@@ -174,8 +174,13 @@ For sale
 
   try {
     const response = await callGeminiWithFallback(ai, [
-      ...imageParts,
-      { text: systemInstruction }
+      {
+        role: 'user',
+        parts: [
+          ...imageParts,
+          { text: systemInstruction }
+        ]
+      }
     ]);
 
     // Remove template boundaries if the model accidentally included them
