@@ -149,6 +149,19 @@ module.exports = async (req, res) => {
     return res.status(200).send('OK');
   }
 
+  // Deduplicate incoming Telegram webhook retries
+  if (update.update_id) {
+    try {
+      const isProcessed = await db.checkAndMarkUpdateProcessed(update.update_id);
+      if (isProcessed) {
+        console.log(`[Webhook] Duplicate request ignored: Update ID ${update.update_id}`);
+        return res.status(200).send('OK');
+      }
+    } catch (dedupErr) {
+      console.error('Error in deduplication logic:', dedupErr);
+    }
+  }
+
   // 1. Handle Callback Queries (Button Clicks)
   if (update.callback_query) {
     const callbackQuery = update.callback_query;

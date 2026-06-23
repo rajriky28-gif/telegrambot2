@@ -36,6 +36,20 @@ async function initDb() {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `;
+
+    // Create the processed updates table for webhook deduplication
+    await sql`
+      CREATE TABLE IF NOT EXISTS processed_updates (
+        update_id VARCHAR(50) PRIMARY KEY,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `;
+    
+    // Prune old processed updates (older than 1 day) to keep db clean
+    await sql`
+      DELETE FROM processed_updates
+      WHERE created_at < NOW() - INTERVAL '1 day';
+    `;
     
     console.log('PostgreSQL database initialized successfully.');
   } catch (error) {
@@ -155,6 +169,39 @@ async function getLastMessageId(chatId) {
   }
 }
 
+async function checkAndMarkUpdateProcessed(updateId) {
+  const updateIdStr = String(updateId);
+  if (!isPostgresEnabled()) {
+    if (processedUpdates.has(updateIdStr)) {
+      return true; // Already processed
+    }
+    processedUpdates.add(updateIdStr);
+    
+    // Prune memory updates list if too large
+    if (processedUpdates.size > 1000) {
+      const first = processedUpdates.keys().next().value;
+      processedUpdates.delete(first);
+    }
+    return false; // New update
+  }
+
+  try {
+    await sql`
+      INSERT INTO processed_updates (update_id)
+      VALUES (${updateIdStr});
+    `;
+    return false; // New update, inserted successfully
+  } catch (error) {
+    // Postgres Unique Violation code is '23505'
+    if (error.code === '23505' || error.message?.includes('unique constraint') || error.message?.includes('already exists')) {
+      console.log(`[Postgres DB] Duplicate update detected: ${updateIdStr}`);
+      return true; // Already processed
+    }
+    console.error('Error checking processed update:', error);
+    return false; // On failure, continue to process to avoid getting stuck
+  }
+}
+
 module.exports = {
   initDb,
   addImage,
@@ -162,5 +209,6 @@ module.exports = {
   clearImages,
   setLastMessageId,
   getLastMessageId,
+  checkAndMarkUpdateProcessed,
   isPostgresEnabled
 };

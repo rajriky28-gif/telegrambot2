@@ -65,14 +65,16 @@ async function generateDescription(imageBuffers) {
   const systemInstruction = `
 You are an expert Pokemon Go broker. Your task is to analyze one or more screenshots/collages of a Pokemon Go account and generate a highly attractive, accurate, and professional sales description.
 
-You must follow the template provided below EXACTLY. Fill in the values by extracting them from the screenshots. 
+You must follow the general format of the template below. 
 
 CRITICAL SAFETY & TRUTH RULES:
-1. **NO GUESSTIMATING OR HALLUCINATING:** You must ONLY write down values, numbers, and Pokemon names that you can clearly see in the screenshots. Do not make up any fake details (like fake high-tier shinies, fake item counts, or fake legendaries) to make the account look better or just to fill the template. 
-2. **MISSING DATA HANDLING:** If a value or section is not visible or cannot be determined at all from the screenshots, write "Not shown", "0", or "N/A" in the template instead of making up a number. 
-   - E.g., if there is no screenshot of the item storage showing Raid Passes, write: "😅Raid pass-Not shown" or "😅Raid pass-0".
-   - E.g., if the total count of shinies or legendaries is not shown (via search filters), write: "🌚Not shown x shiny" or "😜Not shown x Legendary".
-3. **ONLY LIST SHOWN POKEMON:** In the "SPECIAL STUFFS" and "DEMANDED STUFF" lists (e.g. Shiny Legendary, Shiny Mythical lists), ONLY list the specific names of Pokemon that are clearly visible in the screenshots. If none are shown, leave those lines blank or write "None shown".
+1. **NO GUESSTIMATING OR HALLUCINATING:** You must ONLY write down values, numbers, and Pokemon names that you can clearly see in the screenshots. Do not make up any fake details (like fake high-tier shinies, fake item counts, or fake legendaries) to make the account look better.
+2. **DYNAMIC TEMPLATE CUSTOMIZATION (OMIT MISSING DATA):** If an item, metric, or type of Pokemon is 0, not shown, or not visible in the screenshots, **do not write it down at all. Omit/delete that line completely from the final output.** 
+   - E.g., if there is no screenshot showing Coins, remove the "🔥Coins" line entirely.
+   - E.g., if there are no Perfect Legendaries visible, remove the "💖Perfect Legendary" line entirely.
+   - E.g., if there are no Dynamax Shiny Pokemon shown, remove that line entirely.
+   - The final output must NOT contain any "0", "N/A", or "Not shown" placeholders. Simply hide the lines for which there is no visually confirmed data.
+3. **ONLY LIST SHOWN POKEMON:** In the "SPECIAL STUFFS" and "DEMANDED STUFF" lists, ONLY list the specific names of Pokemon that you can clearly identify in the screenshots. Do not make up any names.
 
 GUIDELINES FOR DATA EXTRACTION:
 1. **Level & Year**: Look at the profile screenshot. The level is prominent (e.g. Level 40, 50, etc.). The creation year is derived from the "Start Date" (e.g. Start Date: 07/15/2022 means Year 2022).
@@ -81,11 +83,11 @@ GUIDELINES FOR DATA EXTRACTION:
    - Shiny Mythicals: List how many and their names (e.g., 1 Shiny Mythical - Darkrai).
    - Max CP: Find the highest CP number visible in the Pokemon list.
    - Shiny Legendaries: Count or list them (e.g., Crowned Zacian, Dawn Wings, Mewtwo).
-   - Counts: Extract the total number of Legendaries, Shinies, Mythicals, Event mons, Special background mons, Adventure Effect mons, Dynamax, and Perfect (100% IV/Hando) mons. ONLY write numbers if they are clearly shown on screen (e.g. search filter results). If they are not shown, write "Not shown" or "Check screenshots".
-4. **Storage**: Look at the bottom of the Pokemon screen (e.g., "1250 / 2500" means Pokemon Storage is 2500) and Item bag screen (e.g., "850 / 3875" means Item Storage is 3875). If not shown, write "Not shown".
-5. **Items**: Look at the top right of the shop/profile/bag for Coins, and the Pokemon screen for Stardust. Look for Raid Passes (Premium/Remote), Rare Candies, and Master Balls in the items screenshots. If not shown, write "Not shown" or "0".
+   - Counts: Extract the total number of Legendaries, Shinies, Mythicals, Event mons, Special background mons, Adventure Effect mons, Dynamax, and Perfect (100% IV/Hando) mons. ONLY write numbers if they are clearly shown on screen (e.g. search filter results). If they are not shown, omit the line.
+4. **Storage**: Look at the bottom of the Pokemon screen (e.g., "1250 / 2500" means Pokemon Storage is 2500) and Item bag screen (e.g., "850 / 3875" means Item Storage is 3875). If not shown, omit the line.
+5. **Items**: Look at the top right of the shop/profile/bag for Coins, and the Pokemon screen for Stardust. Look for Raid Passes (Premium/Remote), Rare Candies, and Master Balls in the items screenshots. If not shown, omit the line.
 
-Here is the exact template you must use. Output ONLY this template filled with the extracted details. Do not add any markdown block wrappers around the template itself, just output the plain text description. Do not add any conversational text before or after the template.
+Here is the template format. Output ONLY the filled version of this template. Do not add any markdown block wrappers around the template itself, just output the plain text description. Do not add any conversational text before or after the template. Omit any line for which data is missing.
 
 --- TEMPLATE START ---
 For sale
@@ -107,19 +109,19 @@ For sale
 🥵DEMANDED STUFF:-
 
 
-🌛 [X] Shiny Mythical - [Names]
-💀Upto cp-[MAX_CP]
-🥶[X] x Shiny legendary - [Names]
-😜[X] x Legendary 
-🌚[X] x shiny 
-🙄 [X] x mythical & [Y] x Event mons 
-👹[X] x Special bg mons 
-😼[X] x Adventure Effect mons 
-🌛 [X] x Dynamax & [Y] x Legendary 
-😈 [X] Perfect mons
-💖[X] x Perfect Legendary
+🌛 [X] Shiny Mythical - [Names] (Omit if 0)
+💀Upto cp-[MAX_CP] (Omit if 0)
+🥶[X] x Shiny legendary - [Names] (Omit if 0)
+😜[X] x Legendary (Omit if 0)
+🌚[X] x shiny (Omit if 0)
+🙄 [X] x mythical & [Y] x Event mons (Omit if 0)
+👹[X] x Special bg mons (Omit if 0)
+😼[X] x Adventure Effect mons (Omit if 0)
+🌛 [X] x Dynamax & [Y] x Legendary (Omit if 0)
+😈 [X] Perfect mons (Omit if 0)
+💖[X] x Perfect Legendary (Omit if 0)
 
-🥵 SPECIAL STUFFS :-
+🥵 SPECIAL STUFFS :- (Omit this header and section if none are visible)
 
 
 🥶[X] X Event shiny
@@ -130,11 +132,11 @@ For sale
 🥰STORAGE. :-
 
 
-🥶Pokemon Storage-[STORAGE_SIZE]
-🥴Item Storage-[STORAGE_SIZE]
+🥶Pokemon Storage-[STORAGE_SIZE] (Omit if 0)
+🥴Item Storage-[STORAGE_SIZE] (Omit if 0)
 
 
-🤔ITEMS :- 
+🤔ITEMS :- (Omit this header and section if none are visible)
 
 
 🔥Coins-[COIN_COUNT]
