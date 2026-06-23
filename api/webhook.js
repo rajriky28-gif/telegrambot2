@@ -142,8 +142,10 @@ Send your first image/collage now!`,
     // 2. Handle incoming photos or documents (images)
     let fileId = null;
     if (message.photo && message.photo.length > 0) {
-      // Get the highest resolution photo
-      fileId = message.photo[message.photo.length - 1].file_id;
+      // Get a medium-high resolution photo (usually around 800px, index 2)
+      // This is perfectly readable for the AI, but 20 times smaller in file size.
+      const targetIndex = Math.min(message.photo.length - 1, 2);
+      fileId = message.photo[targetIndex].file_id;
     } else if (message.document && message.document.mime_type && message.document.mime_type.startsWith('image/')) {
       fileId = message.document.file_id;
     }

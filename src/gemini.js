@@ -11,7 +11,7 @@ const getGeminiClient = () => {
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function callGeminiWithFallback(ai, contents) {
-  const modelsToTry = ['gemini-2.5-flash', 'gemini-1.5-flash'];
+  const modelsToTry = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.5-pro'];
   let lastError = null;
 
   for (const model of modelsToTry) {
@@ -42,11 +42,11 @@ async function callGeminiWithFallback(ai, contents) {
     }
   }
   
-  // If both failed, wait 2 seconds and try one last time with gemini-1.5-flash
-  console.warn(`[Gemini API] Both models failed initially. Waiting 2s for final attempt with gemini-1.5-flash...`);
+  // If all failed, wait 2 seconds and try one last time with gemini-2.0-flash
+  console.warn(`[Gemini API] All models failed initially. Waiting 2s for final attempt with gemini-2.0-flash...`);
   await sleep(2000);
   return await ai.models.generateContent({
-    model: 'gemini-1.5-flash',
+    model: 'gemini-2.0-flash',
     contents
   });
 }
