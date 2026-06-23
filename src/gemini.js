@@ -10,15 +10,22 @@ const getGeminiClient = () => {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function callGeminiWithRetry(ai, model, contents, retries = 3, delay = 2000) {
-  for (let i = 0; i < retries; i++) {
+async function callGeminiWithFallback(ai, contents) {
+  const modelsToTry = ['gemini-2.5-flash', 'gemini-1.5-flash'];
+  let lastError = null;
+
+  for (const model of modelsToTry) {
     try {
+      console.log(`[Gemini API] Trying model: ${model}`);
       return await ai.models.generateContent({
         model,
         contents
       });
     } catch (error) {
+      lastError = error;
       const errorMsg = error.message || '';
+      console.warn(`[Gemini API] Model ${model} failed: ${errorMsg}`);
+      
       const isTransient = error.status === 'UNAVAILABLE' || 
                           error.status === 503 ||
                           errorMsg.includes('503') || 
@@ -26,16 +33,22 @@ async function callGeminiWithRetry(ai, model, contents, retries = 3, delay = 200
                           errorMsg.includes('Resource has been exhausted') ||
                           errorMsg.includes('429') ||
                           error.status === 429;
-      
-      if (isTransient && i < retries - 1) {
-        console.warn(`[Gemini API] Transient error (attempt ${i + 1}/${retries}): ${errorMsg}. Retrying in ${delay}ms...`);
-        await sleep(delay);
-        delay *= 2; // exponential backoff
+                          
+      if (isTransient) {
+        // Try the next model in the list
         continue;
       }
       throw error;
     }
   }
+  
+  // If both failed, wait 2 seconds and try one last time with gemini-1.5-flash
+  console.warn(`[Gemini API] Both models failed initially. Waiting 2s for final attempt with gemini-1.5-flash...`);
+  await sleep(2000);
+  return await ai.models.generateContent({
+    model: 'gemini-1.5-flash',
+    contents
+  });
 }
 
 async function generateDescription(imageBuffers) {
@@ -160,7 +173,7 @@ For sale
 `;
 
   try {
-    const response = await callGeminiWithRetry(ai, 'gemini-2.5-flash', [
+    const response = await callGeminiWithFallback(ai, [
       ...imageParts,
       { text: systemInstruction }
     ]);
