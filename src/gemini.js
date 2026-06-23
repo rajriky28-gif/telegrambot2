@@ -8,11 +8,36 @@ const getGeminiClient = () => {
   return new GoogleGenAI({ apiKey });
 };
 
-/**
- * Sends multiple image buffers to Gemini 2.5 Flash to generate a Pokemon Go sales description.
- * @param {Array<Buffer>} imageBuffers - Array of image buffers.
- * @returns {Promise<string>} - The generated description.
- */
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function callGeminiWithRetry(ai, model, contents, retries = 3, delay = 2000) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await ai.models.generateContent({
+        model,
+        contents
+      });
+    } catch (error) {
+      const errorMsg = error.message || '';
+      const isTransient = error.status === 'UNAVAILABLE' || 
+                          error.status === 503 ||
+                          errorMsg.includes('503') || 
+                          errorMsg.includes('UNAVAILABLE') ||
+                          errorMsg.includes('Resource has been exhausted') ||
+                          errorMsg.includes('429') ||
+                          error.status === 429;
+      
+      if (isTransient && i < retries - 1) {
+        console.warn(`[Gemini API] Transient error (attempt ${i + 1}/${retries}): ${errorMsg}. Retrying in ${delay}ms...`);
+        await sleep(delay);
+        delay *= 2; // exponential backoff
+        continue;
+      }
+      throw error;
+    }
+  }
+}
+
 async function generateDescription(imageBuffers) {
   const ai = getGeminiClient();
 
@@ -135,13 +160,10 @@ For sale
 `;
 
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: [
-        ...imageParts,
-        { text: systemInstruction }
-      ]
-    });
+    const response = await callGeminiWithRetry(ai, 'gemini-2.5-flash', [
+      ...imageParts,
+      { text: systemInstruction }
+    ]);
 
     // Remove template boundaries if the model accidentally included them
     let text = response.text || '';
