@@ -38,7 +38,22 @@ async function downloadTelegramFile(fileId) {
 }
 
 // Function to handle Generate Action
-async function handleGenerate(chatId) {
+async function handleGenerate(chatId, messageId = null) {
+  // Hide buttons immediately to prevent duplicate clicks
+  const msgId = messageId || await db.getLastMessageId(chatId);
+  if (msgId) {
+    try {
+      await sendTelegram('editMessageText', {
+        chat_id: chatId,
+        message_id: msgId,
+        text: '🤖 *Processing...* Analyzing your screenshots and generating the description. Please wait up to 10-15 seconds.',
+        parse_mode: 'Markdown'
+      });
+    } catch (e) {
+      console.warn('Failed to hide buttons:', e);
+    }
+  }
+
   const fileIds = await db.getImages(chatId);
   if (!fileIds || fileIds.length === 0) {
     await sendTelegram('sendMessage', {
@@ -48,13 +63,6 @@ async function handleGenerate(chatId) {
     });
     return;
   }
-
-  // Notify user that analysis is starting
-  await sendTelegram('sendMessage', {
-    chat_id: chatId,
-    text: `🤖 Analyzing *${fileIds.length}* image(s) and generating description... This may take up to 10-15 seconds. Please wait.`,
-    parse_mode: 'Markdown'
-  });
 
   try {
     // Download all images from Telegram in parallel
@@ -158,7 +166,7 @@ module.exports = async (req, res) => {
     }
 
     if (data === 'action_generate') {
-      await handleGenerate(chatId);
+      await handleGenerate(chatId, messageId);
     } else if (data === 'action_clear') {
       await handleClear(chatId, messageId);
     }
