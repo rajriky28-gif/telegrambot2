@@ -2,6 +2,14 @@
   "version": 2,
   "routes": [
     {
+      "src": "/admin",
+      "dest": "api/admin.js"
+    },
+    {
+      "src": "/api/admin",
+      "dest": "api/admin.js"
+    },
+    {
       "src": "/api/webhook",
       "dest": "api/webhook.js"
     }

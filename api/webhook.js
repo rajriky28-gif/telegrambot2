@@ -360,8 +360,25 @@ module.exports = async (req, res) => {
   if (update.callback_query) {
     const callbackQuery = update.callback_query;
     const chatId = callbackQuery.message.chat.id;
+    const userId = callbackQuery.from ? callbackQuery.from.id : chatId;
     const messageId = callbackQuery.message.message_id;
     const data = callbackQuery.data;
+
+    // Check authorization status
+    const isAuthorized = await db.isUserAuthorized(userId);
+    if (!isAuthorized) {
+      try {
+        await sendTelegram('answerCallbackQuery', {
+          callback_query_id: callbackQuery.id,
+          text: '⚠️ Access key expired, deactivated, or not found.',
+          show_alert: true
+        });
+        await sendTelegram('deleteMessage', { chat_id: chatId, message_id: messageId });
+      } catch (e) {
+        console.warn('Failed to intercept callback for unauthorized user:', e);
+      }
+      return res.status(200).send('OK');
+    }
 
     // Acknowledge the callback query so the button stops loading
     try {
@@ -403,10 +420,63 @@ module.exports = async (req, res) => {
   }
 
   const chatId = message.chat.id;
+  const userId = message.from ? message.from.id : chatId;
+  const username = message.from ? (message.from.username || `${message.from.first_name || ''} ${message.from.last_name || ''}`.trim() || 'User') : 'User';
   const text = message.text ? message.text.trim() : '';
 
   try {
-    // A. Handle command overrides first
+    // Check authorization status
+    const isAuthorized = await db.isUserAuthorized(userId);
+
+    if (!isAuthorized) {
+      // If unauthorized, they must submit a key
+      if (text && !text.startsWith('/')) {
+        const keyCheck = await db.validateKey(text);
+        if (keyCheck.valid) {
+          await db.bindKeyToUser(text, userId, username);
+          await sendTelegram('sendMessage', {
+            chat_id: chatId,
+            text: '✅ *Access Granted!*\n\nYour license key has been verified and bound to this account. You can now use the bot.',
+            parse_mode: 'Markdown'
+          });
+          // Transition directly to game selection
+          await sendGameSelectionPrompt(chatId);
+          return res.status(200).send('OK');
+        } else {
+          let errorMsg = 'This key is invalid. Please verify and try again.';
+          if (keyCheck.error === 'DEACTIVATED') {
+            errorMsg = 'This key has been deactivated by the admin.';
+          } else if (keyCheck.error === 'EXPIRED') {
+            errorMsg = 'This key has expired.';
+          } else if (keyCheck.error === 'LIMIT_EXCEEDED') {
+            errorMsg = 'This key has reached its maximum user/device limit and cannot be bound to another account.';
+          }
+
+          await sendTelegram('sendMessage', {
+            chat_id: chatId,
+            text: `❌ *Activation Failed:* ${errorMsg}\n\n🔑 *Please enter a valid access key to unlock the bot:*`,
+            parse_mode: 'Markdown'
+          });
+          return res.status(200).send('OK');
+        }
+      }
+
+      // Default blocked screen for commands or media uploads
+      await sendTelegram('sendMessage', {
+        chat_id: chatId,
+        text: `👋 *Welcome to the Game Account Sales Description Bot!*
+
+⚠️ *Access Restricted*: You must have an active license key to access this bot.
+
+To purchase a license key or get support, please contact the administrator: **@admin**
+
+🔑 *Please paste your access key here to activate your account:*`,
+        parse_mode: 'Markdown'
+      });
+      return res.status(200).send('OK');
+    }
+
+    // A. Handle command overrides first (for authorized users)
     if (text.startsWith('/start') || text.startsWith('/help')) {
       await db.clearImages(chatId); // Clear database images and session state
       await sendGameSelectionPrompt(chatId);

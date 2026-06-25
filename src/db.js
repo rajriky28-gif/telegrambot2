@@ -4,6 +4,8 @@ const { sql } = require('@vercel/postgres');
 const memoryDb = new Map();
 const memorySessions = new Map();
 const processedUpdates = new Set();
+const botKeysMemory = new Map();
+const keyUsersMemory = new Map(); // key_code -> array of { userId, username, boundAt }
 
 const isPostgresEnabled = () => {
   return !!(process.env.POSTGRES_URL || process.env.POSTGRES_PRISMA_URL || process.env.POSTGRES_URL_NON_POOLING);
@@ -29,6 +31,28 @@ async function initDb() {
       CREATE INDEX IF NOT EXISTS idx_pokemon_images_chat_id ON pokemon_images(chat_id);
     `;
     
+    // Create bot_keys table
+    await sql`
+      CREATE TABLE IF NOT EXISTS bot_keys (
+        key_code VARCHAR(50) PRIMARY KEY,
+        max_users INTEGER DEFAULT 1,
+        expires_at TIMESTAMP,
+        status VARCHAR(20) DEFAULT 'ACTIVE',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `;
+
+    // Create key_users binding table
+    await sql`
+      CREATE TABLE IF NOT EXISTS key_users (
+        key_code VARCHAR(50) NOT NULL,
+        telegram_user_id VARCHAR(50) NOT NULL,
+        username VARCHAR(100),
+        bound_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (key_code, telegram_user_id)
+      );
+    `;
+    
     // Create the sessions table to track last_message_id and conversational state
     await sql`
       CREATE TABLE IF NOT EXISTS pokemon_sessions (
@@ -38,6 +62,7 @@ async function initDb() {
         game_name VARCHAR(100),
         template_pref VARCHAR(50),
         custom_template TEXT,
+        bound_key VARCHAR(50),
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `;
@@ -47,6 +72,7 @@ async function initDb() {
     await sql`ALTER TABLE pokemon_sessions ADD COLUMN IF NOT EXISTS game_name VARCHAR(100);`;
     await sql`ALTER TABLE pokemon_sessions ADD COLUMN IF NOT EXISTS template_pref VARCHAR(50);`;
     await sql`ALTER TABLE pokemon_sessions ADD COLUMN IF NOT EXISTS custom_template TEXT;`;
+    await sql`ALTER TABLE pokemon_sessions ADD COLUMN IF NOT EXISTS bound_key VARCHAR(50);`;
 
     // Create the processed updates table for webhook deduplication
     await sql`
@@ -117,6 +143,7 @@ const defaultSession = {
   game_name: null,
   template_pref: null,
   custom_template: null,
+  bound_key: null,
   last_message_id: null
 };
 
@@ -131,7 +158,7 @@ async function getSession(chatId) {
 
   try {
     const { rows } = await sql`
-      SELECT state, game_name, template_pref, custom_template, last_message_id 
+      SELECT state, game_name, template_pref, custom_template, bound_key, last_message_id 
       FROM pokemon_sessions
       WHERE chat_id = ${chatIdStr};
     `;
@@ -141,6 +168,7 @@ async function getSession(chatId) {
         game_name: rows[0].game_name,
         template_pref: rows[0].template_pref,
         custom_template: rows[0].custom_template,
+        bound_key: rows[0].bound_key,
         last_message_id: rows[0].last_message_id
       };
     }
@@ -163,14 +191,15 @@ async function updateSession(chatId, updates) {
 
   try {
     await sql`
-      INSERT INTO pokemon_sessions (chat_id, state, game_name, template_pref, custom_template, last_message_id, updated_at)
-      VALUES (${chatIdStr}, ${updated.state}, ${updated.game_name}, ${updated.template_pref}, ${updated.custom_template}, ${updated.last_message_id}, CURRENT_TIMESTAMP)
+      INSERT INTO pokemon_sessions (chat_id, state, game_name, template_pref, custom_template, bound_key, last_message_id, updated_at)
+      VALUES (${chatIdStr}, ${updated.state}, ${updated.game_name}, ${updated.template_pref}, ${updated.custom_template}, ${updated.bound_key}, ${updated.last_message_id}, CURRENT_TIMESTAMP)
       ON CONFLICT (chat_id)
       DO UPDATE SET 
         state = EXCLUDED.state,
         game_name = EXCLUDED.game_name,
         template_pref = EXCLUDED.template_pref,
         custom_template = EXCLUDED.custom_template,
+        bound_key = EXCLUDED.bound_key,
         last_message_id = EXCLUDED.last_message_id,
         updated_at = CURRENT_TIMESTAMP;
     `;
@@ -248,6 +277,261 @@ async function checkAndMarkUpdateProcessed(updateId) {
   }
 }
 
+async function validateKey(keyCode) {
+  const code = String(keyCode).trim().toUpperCase();
+  if (!isPostgresEnabled()) {
+    const key = botKeysMemory.get(code);
+    if (!key) return { valid: false, error: 'INVALID' };
+    if (key.status === 'DEACTIVATED') return { valid: false, error: 'DEACTIVATED' };
+    if (key.expires_at && new Date(key.expires_at) < new Date()) {
+      key.status = 'EXPIRED';
+      return { valid: false, error: 'EXPIRED' };
+    }
+    const boundUsers = keyUsersMemory.get(code) || [];
+    if (boundUsers.length >= key.max_users) return { valid: false, error: 'LIMIT_EXCEEDED' };
+    return { valid: true };
+  }
+
+  try {
+    const { rows } = await sql`
+      SELECT key_code, max_users, expires_at, status 
+      FROM bot_keys 
+      WHERE key_code = ${code};
+    `;
+    if (!rows || rows.length === 0) {
+      return { valid: false, error: 'INVALID' };
+    }
+
+    const key = rows[0];
+    if (key.status === 'DEACTIVATED') {
+      return { valid: false, error: 'DEACTIVATED' };
+    }
+
+    if (key.expires_at && new Date(key.expires_at) < new Date()) {
+      await sql`UPDATE bot_keys SET status = 'EXPIRED' WHERE key_code = ${code};`;
+      return { valid: false, error: 'EXPIRED' };
+    }
+
+    const userCountRes = await sql`
+      SELECT COUNT(*) as count FROM key_users 
+      WHERE key_code = ${code};
+    `;
+    const count = parseInt(userCountRes.rows[0].count, 10);
+    if (count >= key.max_users) {
+      return { valid: false, error: 'LIMIT_EXCEEDED' };
+    }
+
+    return { valid: true };
+  } catch (err) {
+    console.error('Error validating key:', err);
+    return { valid: false, error: 'DB_ERROR' };
+  }
+}
+
+async function bindKeyToUser(keyCode, telegramUserId, username = null) {
+  const code = String(keyCode).trim().toUpperCase();
+  const userIdStr = String(telegramUserId);
+  const usernameStr = username ? String(username) : null;
+
+  if (!isPostgresEnabled()) {
+    if (!keyUsersMemory.has(code)) {
+      keyUsersMemory.set(code, []);
+    }
+    const list = keyUsersMemory.get(code);
+    if (!list.some(u => u.userId === userIdStr)) {
+      list.push({ userId: userIdStr, username: usernameStr, boundAt: new Date() });
+    }
+    return;
+  }
+
+  try {
+    await sql`
+      INSERT INTO key_users (key_code, telegram_user_id, username)
+      VALUES (${code}, ${userIdStr}, ${usernameStr})
+      ON CONFLICT (key_code, telegram_user_id) DO NOTHING;
+    `;
+    await sql`
+      UPDATE pokemon_sessions 
+      SET bound_key = ${code}
+      WHERE chat_id = ${userIdStr};
+    `;
+  } catch (err) {
+    console.error('Error binding key to user:', err);
+    throw err;
+  }
+}
+
+async function isUserAuthorized(telegramUserId) {
+  const userIdStr = String(telegramUserId);
+
+  if (!isPostgresEnabled()) {
+    // Check in-memory maps
+    for (const [code, users] of keyUsersMemory.entries()) {
+      if (users.some(u => u.userId === userIdStr)) {
+        const key = botKeysMemory.get(code);
+        if (key && key.status === 'ACTIVE') {
+          if (!key.expires_at || new Date(key.expires_at) > new Date()) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+
+  try {
+    const { rows } = await sql`
+      SELECT u.key_code 
+      FROM key_users u
+      JOIN bot_keys k ON u.key_code = k.key_code
+      WHERE u.telegram_user_id = ${userIdStr}
+        AND k.status = 'ACTIVE'
+        AND (k.expires_at IS NULL OR k.expires_at > CURRENT_TIMESTAMP);
+    `;
+    return rows && rows.length > 0;
+  } catch (err) {
+    console.error('Error checking user authorization:', err);
+    return false;
+  }
+}
+
+async function getAdminKeys() {
+  if (!isPostgresEnabled()) {
+    const list = [];
+    for (const [code, key] of botKeysMemory.entries()) {
+      const boundUsers = (keyUsersMemory.get(code) || []).map(u => ({
+        user_id: u.userId,
+        username: u.username,
+        bound_at: u.boundAt
+      }));
+      list.push({
+        key_code: code,
+        max_users: key.max_users,
+        expires_at: key.expires_at,
+        status: key.status,
+        created_at: key.created_at,
+        users: boundUsers
+      });
+    }
+    return list;
+  }
+
+  try {
+    const { rows } = await sql`
+      SELECT k.key_code, k.max_users, k.expires_at, k.status, k.created_at,
+             COALESCE(
+               json_agg(
+                 json_build_object(
+                   'user_id', u.telegram_user_id, 
+                   'username', u.username, 
+                   'bound_at', u.bound_at
+                 )
+               ) FILTER (WHERE u.telegram_user_id IS NOT NULL), 
+               '[]'
+             ) as users
+      FROM bot_keys k
+      LEFT JOIN key_users u ON k.key_code = u.key_code
+      GROUP BY k.key_code, k.max_users, k.expires_at, k.status, k.created_at
+      ORDER BY k.created_at DESC;
+    `;
+    return rows.map(r => ({
+      key_code: r.key_code,
+      max_users: r.max_users,
+      expires_at: r.expires_at,
+      status: r.status,
+      created_at: r.created_at,
+      users: typeof r.users === 'string' ? JSON.parse(r.users) : r.users
+    }));
+  } catch (err) {
+    console.error('Error getting admin keys:', err);
+    return [];
+  }
+}
+
+async function createKey(keyCode, maxUsers = 1, durationDays = null) {
+  const code = String(keyCode).trim().toUpperCase();
+  const max = parseInt(maxUsers, 10) || 1;
+  
+  let expiresAt = null;
+  if (durationDays && parseFloat(durationDays) > 0) {
+    expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + parseFloat(durationDays));
+  }
+
+  if (!isPostgresEnabled()) {
+    botKeysMemory.set(code, {
+      max_users: max,
+      expires_at: expiresAt,
+      status: 'ACTIVE',
+      created_at: new Date()
+    });
+    keyUsersMemory.set(code, []);
+    return;
+  }
+
+  try {
+    await sql`
+      INSERT INTO bot_keys (key_code, max_users, expires_at, status)
+      VALUES (${code}, ${max}, ${expiresAt}, 'ACTIVE')
+      ON CONFLICT (key_code) DO UPDATE SET
+        max_users = EXCLUDED.max_users,
+        expires_at = EXCLUDED.expires_at,
+        status = 'ACTIVE';
+    `;
+  } catch (err) {
+    console.error('Error creating key:', err);
+    throw err;
+  }
+}
+
+async function updateKeyStatus(keyCode, status) {
+  const code = String(keyCode).trim().toUpperCase();
+  const stat = String(status).trim().toUpperCase();
+
+  if (!isPostgresEnabled()) {
+    const key = botKeysMemory.get(code);
+    if (key) {
+      key.status = stat;
+    }
+    return;
+  }
+
+  try {
+    await sql`
+      UPDATE bot_keys 
+      SET status = ${stat}
+      WHERE key_code = ${code};
+    `;
+  } catch (err) {
+    console.error('Error updating key status:', err);
+    throw err;
+  }
+}
+
+async function deleteKey(keyCode) {
+  const code = String(keyCode).trim().toUpperCase();
+
+  if (!isPostgresEnabled()) {
+    botKeysMemory.delete(code);
+    keyUsersMemory.delete(code);
+    return;
+  }
+
+  try {
+    await sql`
+      DELETE FROM key_users 
+      WHERE key_code = ${code};
+    `;
+    await sql`
+      DELETE FROM bot_keys 
+      WHERE key_code = ${code};
+    `;
+  } catch (err) {
+    console.error('Error deleting key:', err);
+    throw err;
+  }
+}
+
 module.exports = {
   initDb,
   addImage,
@@ -258,5 +542,12 @@ module.exports = {
   checkAndMarkUpdateProcessed,
   isPostgresEnabled,
   getSession,
-  updateSession
+  updateSession,
+  validateKey,
+  bindKeyToUser,
+  isUserAuthorized,
+  getAdminKeys,
+  createKey,
+  updateKeyStatus,
+  deleteKey
 };
