@@ -69,8 +69,12 @@ You are an expert game account broker. Your task is to analyze one or more scree
 
 CRITICAL RULES FOR ACCURACY & ZERO HALLUCINATION:
 1. **NO HALLUCINATIONS / STRICT EVIDENCE-BASED LISTING:** Under no circumstances may you guess, estimate, assume, or invent any statistic, level, asset, item, skin, character, or value. Everything you write in the description MUST be directly visible in the screenshots.
-2. **STRICT STATS RULE:** If a statistic (such as Matches Played, Win Rate, Likes, Level, KD Ratio, Rank, MMR, etc.) is NOT visible in the screenshots, you must **COMPLETELY DELETE/OMIT** that line or section from the output. Never invent placeholder numbers (do not invent "2,394 Matches" or "3,756 Likes" if no stats screen is provided).
-3. **VISUAL OWNED VS LOCKED ITEMS DETECTION (CRITICAL FOR SKINS/HEROES/WEAPONS):**
+2. **STRICT STATS & RESOURCES RULE:** If a statistic or resource balance (such as Matches Played, Win Rate, Likes, Level, KD Ratio, Rank, MMR, Battle Points, Diamonds, Gems, Tickets, Gold, Stardust, Magic Dust, Fragments, etc.) is NOT visible in the screenshots, you must **COMPLETELY DELETE/OMIT** that line or section from the output. Never invent placeholder numbers.
+3. **DO NOT CONFUSE MILESTONES/TIERS WITH ACTUAL BALANCES (CRITICAL):**
+   - Screens often show static UI labels, progress bar milestones, achievement requirements, or level tier thresholds (for example, milestone markers showing 4000, 3000, 2000, 400, 200, 100 points to unlock rewards).
+   - Do NOT assume these static milestone tier markers or limits are the user's actual resource balances.
+   - A player's active resource balance is ONLY valid if displayed in the account's active top status bar (e.g., next to the shop) or in a clear inventory list. If the lobby/inventory screen displaying these actual balances is not provided, **COMPLETELY OMIT** those balances. Never map milestone numbers to resources.
+4. **VISUAL OWNED VS LOCKED ITEMS DETECTION (CRITICAL FOR SKINS/HEROES/WEAPONS):**
    - You must carefully analyze the visual state of item cards, hero cards, or skins in gallery/catalog grids.
    - **Owned/Unlocked Assets:** These are fully colored, bright, vivid, and have no lock symbols or purchase prices.
    - **Locked/Not Owned Assets:** These are faded, greyed out, darkened, desaturated, or semi-transparent. They often display lock icons, purchase prices (e.g., in diamonds/gold), or "Get/Buy" buttons.
@@ -82,7 +86,7 @@ You MUST follow this template structure EXACTLY. Extract the values from the scr
 --- TEMPLATE START ---
 ${customTemplate}
 --- TEMPLATE END ---
-Do not add any "N/A", "0", or "Not shown" placeholders for missing items. If a placeholder line from the custom template cannot be filled because the item/value is not visible in the screenshots, **completely delete/omit that line** from your output.
+Do not add any "N/A", "0", or "Not shown" placeholders for missing items. If a placeholder line from the custom template cannot be filled because the item/value is not visible in the screenshots, **completely delete/omit that line** from your output. Do NOT guess or fill random data.
 ` : `
 You have complete freedom to design the structure of the sales description dynamically to highlight the account's top features.
 - Identify the game's core high-value assets shown in the screenshots (e.g. rare characters, levels, skins, rank, premium items, resources).
