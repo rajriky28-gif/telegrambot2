@@ -121,14 +121,27 @@ Your output must consist ONLY of the generated sales description. Do not add any
   // Add visual few-shot reference examples as conversational turns
   for (const example of fewShotExamples) {
     if (example.imageBuffers && example.imageBuffers.length > 0) {
+      const parts = example.imageBuffers.map((buf) => ({
+        inlineData: {
+          data: buf.toString('base64'),
+          mimeType: 'image/jpeg'
+        }
+      }));
+
+      // If there are correction notes, add them as a text part to guide the AI
+      if (example.correction_notes) {
+        parts.push({
+          text: `CRITICAL CORRECTION NOTE FROM PREVIOUS RUN (LEARN FROM THIS MISTAKE AND DO NOT REPEAT IT):\n${example.correction_notes}`
+        });
+      } else {
+        parts.push({
+          text: "Analyze these screenshots and generate a sales description."
+        });
+      }
+
       contents.push({
         role: 'user',
-        parts: example.imageBuffers.map((buf) => ({
-          inlineData: {
-            data: buf.toString('base64'),
-            mimeType: 'image/jpeg'
-          }
-        }))
+        parts: parts
       });
       contents.push({
         role: 'model',

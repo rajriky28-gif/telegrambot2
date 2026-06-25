@@ -425,10 +425,10 @@ module.exports = async (req, res) => {
     } else if (data === 'action_clear') {
       await handleClear(chatId, messageId);
     } else if (data === 'action_correct') {
-      await db.updateSession(chatId, { state: 'AWAITING_CORRECTION' });
+      await db.updateSession(chatId, { state: 'AWAITING_CORRECTION_DESC' });
       await sendTelegram('sendMessage', {
         chat_id: chatId,
-        text: '✍️ *Submit Description Correction*\n\nPlease paste or type the exact corrected sales description now. I will save this description and the screenshots in my database to help improve my AI generation for future accounts!',
+        text: '✍️ *Submit Description Correction (Step 1/2)*\n\nPlease paste or type the exact corrected sales description now. I will save this description and ask for your training notes in the next step!',
         parse_mode: 'Markdown'
       });
     } else if (data.startsWith('game_')) {
@@ -748,13 +748,25 @@ Please upload screenshots, or click the buttons below the status message to proc
         });
         await updateDashboard(chatId, updatedSession, allFiles.length);
         return res.status(200).send('OK');
-      } else if (state === 'AWAITING_CORRECTION') {
+      } else if (state === 'AWAITING_CORRECTION_DESC') {
+        await db.updateSession(chatId, { 
+          temp_corrected_desc: text, 
+          state: 'AWAITING_CORRECTION_NOTES' 
+        });
+        await sendTelegram('sendMessage', {
+          chat_id: chatId,
+          text: '📝 *Submit Description Correction (Step 2/2: Training Notes)*\n\nGot it! Now, please type a short note explaining what mistake the AI made (e.g. *"The trainer level is 40, not 50"* or *"You counted locked skins"*). I will feed these instructions to the AI to prevent similar mistakes in the future.\n\nType `/skip` if you do not want to add any notes.',
+          parse_mode: 'Markdown'
+        });
+        return res.status(200).send('OK');
+      } else if (state === 'AWAITING_CORRECTION_NOTES') {
         const fileIds = await db.getImages(chatId);
+        const notes = (text === '/skip') ? null : text;
         if (fileIds && fileIds.length > 0) {
-          await db.addFewShotExample(session.game_name || 'General Game', fileIds, text);
+          await db.addFewShotExample(session.game_name || 'General Game', fileIds, session.temp_corrected_desc, notes);
           await sendTelegram('sendMessage', {
             chat_id: chatId,
-            text: '✅ *Correction saved successfully!*\n\nI have registered this example in my database. I will use it as a reference to keep improving and generate more accurate descriptions for future accounts! 🚀',
+            text: '✅ *Correction & Training Notes Saved!*\n\nI have registered this training example in my database. I will use it as a reference to keep improving and avoid making similar mistakes! 🚀',
             parse_mode: 'Markdown'
           });
         } else {

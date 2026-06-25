@@ -100,6 +100,8 @@ async function initDb() {
     await sql`ALTER TABLE pokemon_sessions ADD COLUMN IF NOT EXISTS template_pref VARCHAR(50);`;
     await sql`ALTER TABLE pokemon_sessions ADD COLUMN IF NOT EXISTS custom_template TEXT;`;
     await sql`ALTER TABLE pokemon_sessions ADD COLUMN IF NOT EXISTS bound_key VARCHAR(50);`;
+    await sql`ALTER TABLE pokemon_sessions ADD COLUMN IF NOT EXISTS temp_corrected_desc TEXT;`;
+    await sql`ALTER TABLE few_shot_examples ADD COLUMN IF NOT EXISTS correction_notes TEXT;`;
 
     // Create the processed updates table for webhook deduplication
     await sql`
@@ -171,7 +173,8 @@ const defaultSession = {
   template_pref: null,
   custom_template: null,
   bound_key: null,
-  last_message_id: null
+  last_message_id: null,
+  temp_corrected_desc: null
 };
 
 async function getSession(chatId) {
@@ -185,7 +188,7 @@ async function getSession(chatId) {
 
   try {
     const { rows } = await sql`
-      SELECT state, game_name, template_pref, custom_template, bound_key, last_message_id 
+      SELECT state, game_name, template_pref, custom_template, bound_key, last_message_id, temp_corrected_desc
       FROM pokemon_sessions
       WHERE chat_id = ${chatIdStr};
     `;
@@ -196,7 +199,8 @@ async function getSession(chatId) {
         template_pref: rows[0].template_pref,
         custom_template: rows[0].custom_template,
         bound_key: rows[0].bound_key,
-        last_message_id: rows[0].last_message_id
+        last_message_id: rows[0].last_message_id,
+        temp_corrected_desc: rows[0].temp_corrected_desc
       };
     }
     return { ...defaultSession };
@@ -218,8 +222,8 @@ async function updateSession(chatId, updates) {
 
   try {
     await sql`
-      INSERT INTO pokemon_sessions (chat_id, state, game_name, template_pref, custom_template, bound_key, last_message_id, updated_at)
-      VALUES (${chatIdStr}, ${updated.state}, ${updated.game_name}, ${updated.template_pref}, ${updated.custom_template}, ${updated.bound_key}, ${updated.last_message_id}, CURRENT_TIMESTAMP)
+      INSERT INTO pokemon_sessions (chat_id, state, game_name, template_pref, custom_template, bound_key, last_message_id, temp_corrected_desc, updated_at)
+      VALUES (${chatIdStr}, ${updated.state}, ${updated.game_name}, ${updated.template_pref}, ${updated.custom_template}, ${updated.bound_key}, ${updated.last_message_id}, ${updated.temp_corrected_desc}, CURRENT_TIMESTAMP)
       ON CONFLICT (chat_id)
       DO UPDATE SET 
         state = EXCLUDED.state,
@@ -228,6 +232,7 @@ async function updateSession(chatId, updates) {
         custom_template = EXCLUDED.custom_template,
         bound_key = EXCLUDED.bound_key,
         last_message_id = EXCLUDED.last_message_id,
+        temp_corrected_desc = EXCLUDED.temp_corrected_desc,
         updated_at = CURRENT_TIMESTAMP;
     `;
   } catch (error) {
@@ -669,15 +674,17 @@ async function unbindUser(keyCode, telegramUserId) {
   }
 }
 
-async function addFewShotExample(gameName, fileIds, correctedDescription) {
+async function addFewShotExample(gameName, fileIds, correctedDescription, correctionNotes = null) {
   const game = String(gameName).trim();
   const desc = String(correctedDescription).trim();
+  const notes = correctionNotes ? String(correctionNotes).trim() : null;
 
   if (!isPostgresEnabled()) {
     fewShotExamplesMemory.push({
       game_name: game,
       file_ids: fileIds,
       corrected_description: desc,
+      correction_notes: notes,
       created_at: new Date()
     });
     if (fewShotExamplesMemory.length > 50) {
@@ -689,8 +696,8 @@ async function addFewShotExample(gameName, fileIds, correctedDescription) {
   try {
     const fileIdsStr = JSON.stringify(fileIds);
     await sql`
-      INSERT INTO few_shot_examples (game_name, file_ids, corrected_description)
-      VALUES (${game}, ${fileIdsStr}, ${desc});
+      INSERT INTO few_shot_examples (game_name, file_ids, corrected_description, correction_notes)
+      VALUES (${game}, ${fileIdsStr}, ${desc}, ${notes});
     `;
   } catch (err) {
     console.error('Error adding few-shot example:', err);
@@ -708,13 +715,14 @@ async function getFewShotExamples(gameName, limit = 3) {
       .slice(0, limit)
       .map(ex => ({
         file_ids: ex.file_ids,
-        corrected_description: ex.corrected_description
+        corrected_description: ex.corrected_description,
+        correction_notes: ex.correction_notes || null
       }));
   }
 
   try {
     const { rows } = await sql`
-      SELECT file_ids, corrected_description
+      SELECT file_ids, corrected_description, correction_notes
       FROM few_shot_examples
       WHERE LOWER(game_name) = LOWER(${game})
       ORDER BY created_at DESC
@@ -722,7 +730,8 @@ async function getFewShotExamples(gameName, limit = 3) {
     `;
     return rows.map(row => ({
       file_ids: JSON.parse(row.file_ids),
-      corrected_description: row.corrected_description
+      corrected_description: row.corrected_description,
+      correction_notes: row.correction_notes || null
     }));
   } catch (err) {
     console.error('Error fetching few-shot examples:', err);
