@@ -10,7 +10,7 @@ const getGeminiClient = () => {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function callGeminiWithFallback(ai, contents) {
+async function callGeminiWithFallback(ai, contents, config = {}) {
   const modelsToTry = ['gemini-3.5-flash', 'gemini-2.5-flash', 'gemini-2.0-flash'];
   let lastError = null;
 
@@ -19,7 +19,8 @@ async function callGeminiWithFallback(ai, contents) {
       console.log(`[Gemini API] Trying model: ${model}`);
       return await ai.models.generateContent({
         model,
-        contents
+        contents,
+        config
       });
     } catch (error) {
       lastError = error;
@@ -47,7 +48,8 @@ async function callGeminiWithFallback(ai, contents) {
   await sleep(2000);
   return await ai.models.generateContent({
     model: 'gemini-3.5-flash',
-    contents
+    contents,
+    config
   });
 }
 
@@ -66,9 +68,13 @@ async function generateDescription(imageBuffers, gameName, templatePref, customT
 You are an expert game account broker. Your task is to analyze one or more screenshots/collages of an account for the game: **${gameName}** and generate a highly attractive, accurate, and professional sales description.
 
 CRITICAL RULES FOR ACCURACY & ZERO HALLUCINATION:
-1. **100% FACTUAL ACCURACY ONLY:** You must ONLY write down values, numbers, cosmetics, ranks, achievements, and assets that you can clearly see in the screenshots. Do not make up, guess, or estimate any detail. If a detail is not visible in the screenshots, do not mention it at all.
-2. **NO ASSUMPTIONS ON LARGE ACCOUNTS:** Look at the screenshots/collages very carefully. Do not assume or guess the total counts of items/assets unless they are clearly written in text on the screen. If counts are not visible, do not guess a number; instead, list the high-value highlights that you can clearly see (e.g., "Includes legendary skins: skin1, skin2").
-3. **DO NOT GUESS RESOURCES/ITEMS:** Only list resource counts (gems, coins, stardust, levels, items) if they are explicitly visible in the screenshots. If not visible, omit them completely.
+1. **NO HALLUCINATIONS / STRICT EVIDENCE-BASED LISTING:** Under no circumstances may you guess, estimate, assume, or invent any statistic, level, asset, item, skin, character, or value. Everything you write in the description MUST be directly visible in the screenshots.
+2. **STRICT STATS RULE:** If a statistic (such as Matches Played, Win Rate, Likes, Level, KD Ratio, Rank, MMR, etc.) is NOT visible in the screenshots, you must **COMPLETELY DELETE/OMIT** that line or section from the output. Never invent placeholder numbers (do not invent "2,394 Matches" or "3,756 Likes" if no stats screen is provided).
+3. **VISUAL OWNED VS LOCKED ITEMS DETECTION (CRITICAL FOR SKINS/HEROES/WEAPONS):**
+   - You must carefully analyze the visual state of item cards, hero cards, or skins in gallery/catalog grids.
+   - **Owned/Unlocked Assets:** These are fully colored, bright, vivid, and have no lock symbols or purchase prices.
+   - **Locked/Not Owned Assets:** These are faded, greyed out, darkened, desaturated, or semi-transparent. They often display lock icons, purchase prices (e.g., in diamonds/gold), or "Get/Buy" buttons.
+   - **Faction/Category Counters (e.g., "Grand (2/105)"):** If a grid header displays a fraction like \`Category (Numerator/Denominator)\`, the numerator is the actual count of owned assets, and the denominator is the total catalog size. You must ONLY list the fully colored (owned) assets. For example, if a grid is titled "Grand (2/105)" and shows only 2 colored skins (Leona Karina, Fluffy Dream Floryn) and the rest are greyed out (Arrow of Spring Miya, Mistbender Nana, Obi-Wan Kenobi Alucard, etc.), you must **ONLY list the 2 colored skins**. Do NOT include the faded/greyed-out skins in your output. This applies to skins, heroes, characters, emotes, weapons, cards, and collectibles across all games (MLBB, Brawl Stars, Clash of Clans, Free Fire, PUBG, etc.).
 
 SALES LAYOUT & FORMATTING:
 ${templatePref === 'CUSTOM' ? `
@@ -92,12 +98,12 @@ Your output must consist ONLY of the generated sales description. Do not add any
     const response = await callGeminiWithFallback(ai, [
       {
         role: 'user',
-        parts: [
-          ...imageParts,
-          { text: systemInstruction }
-        ]
+        parts: imageParts
       }
-    ]);
+    ], {
+      temperature: 0.0,
+      systemInstruction: systemInstruction
+    });
 
     // Remove template boundaries if the model accidentally included them
     let text = response.text || '';
