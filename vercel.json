@@ -12,6 +12,10 @@
     {
       "src": "/api/webhook",
       "dest": "api/webhook.js"
+    },
+    {
+      "src": "/api/collage",
+      "dest": "api/collage.js"
     }
   ]
 }
