@@ -425,6 +425,9 @@ module.exports = async (req, res) => {
   const text = message.text ? message.text.trim() : '';
 
   try {
+    // Get current session state
+    const session = await db.getSession(chatId);
+
     // Check authorization status
     const isAuthorized = await db.isUserAuthorized(userId);
 
@@ -462,15 +465,34 @@ module.exports = async (req, res) => {
       }
 
       // Default blocked screen for commands or media uploads
-      await sendTelegram('sendMessage', {
-        chat_id: chatId,
-        text: `👋 *Welcome to the Game Account Sales Description Bot!*
+      let blockedText = `👋 *Welcome to the Game Account Sales Description Bot!*
 
 ⚠️ *Access Restricted*: You must have an active license key to access this bot.
 
 To purchase a license key or get support, please contact the administrator: **@admin**
 
-🔑 *Please paste your access key here to activate your account:*`,
+🔑 *Please paste your access key here to activate your account:*`;
+
+      if (session.bound_key) {
+        const keyCheck = await db.validateKey(session.bound_key);
+        if (keyCheck.error === 'DEACTIVATED') {
+          blockedText = `❌ *Access Denied:* Your license key (*${session.bound_key}*) has been deactivated.
+
+Please contact the administrator (**@admin**) to reactivate it.
+
+🔑 *If you have a new access key, please paste it here to activate:*`;
+        } else if (keyCheck.error === 'EXPIRED') {
+          blockedText = `❌ *Access Denied:* Your license key (*${session.bound_key}*) has expired.
+
+Please contact the administrator (**@admin**) to renew your license or purchase a new key.
+
+🔑 *If you have a new access key, please paste it here to activate:*`;
+        }
+      }
+
+      await sendTelegram('sendMessage', {
+        chat_id: chatId,
+        text: blockedText,
         parse_mode: 'Markdown'
       });
       return res.status(200).send('OK');
@@ -493,8 +515,6 @@ To purchase a license key or get support, please contact the administrator: **@a
       return res.status(200).send('OK');
     }
 
-    // Get current session state
-    const session = await db.getSession(chatId);
     const state = session.state || 'AWAITING_GAME_NAME';
 
     // B. Handle photo or document uploads
