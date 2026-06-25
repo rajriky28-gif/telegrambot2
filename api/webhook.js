@@ -281,12 +281,40 @@ async function handleGenerate(chatId, messageId = null) {
     const downloadPromises = fileIds.map(fileId => downloadTelegramFile(fileId));
     const imageBuffers = await Promise.all(downloadPromises);
 
+    // Fetch few-shot reference examples (limit to 2 to avoid huge payloads or prompt clutter)
+    let fewShotExamples = [];
+    try {
+      const examples = await db.getFewShotExamples(gameName, 2);
+      for (const ex of examples) {
+        if (ex.file_ids && ex.file_ids.length > 0) {
+          // Download all images for this reference example
+          const buffers = await Promise.all(
+            ex.file_ids.map(fid => downloadTelegramFile(fid).catch(e => {
+              console.warn(`[FewShot] Failed to download file ${fid}:`, e);
+              return null;
+            }))
+          );
+          const validBuffers = buffers.filter(buf => buf !== null);
+          if (validBuffers.length > 0) {
+            fewShotExamples.push({
+              imageBuffers: validBuffers,
+              description: ex.corrected_description
+            });
+          }
+        }
+      }
+      console.log(`[Generate] Loaded ${fewShotExamples.length} visual few-shot examples for ${gameName}`);
+    } catch (err) {
+      console.warn('[Generate] Failed to fetch few-shot examples:', err);
+    }
+
     // Generate description using Gemini API
     const description = await gemini.generateDescription(
       imageBuffers,
       gameName,
       session.template_pref || 'AUTO',
-      session.custom_template
+      session.custom_template,
+      fewShotExamples
     );
 
     // Send description to user
@@ -295,15 +323,18 @@ async function handleGenerate(chatId, messageId = null) {
       text: description
     });
 
-    // Send a finishing message with clear instruction and inline button
+    // Send a finishing message with clear instruction and inline buttons
     await sendTelegram('sendMessage', {
       chat_id: chatId,
-      text: '✅ *Description generated successfully!*\n\n⚠️ **Important:** Please clear this session before starting the next account! If you do not clear it, the next screenshots will be mixed with this one.',
+      text: '✅ *Description generated successfully!*\n\n⚠️ **Important:** Please clear this session before starting the next account! If you do not clear it, the next screenshots will be mixed with this one.\n\n💡 *If the description contains mistakes, click "✍️ Correct Description" to train and improve the AI!*',
       parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [
           [
             { "text": "🧹 Clear Session & Start Next ID", "callback_data": "action_clear" }
+          ],
+          [
+            { "text": "✍️ Correct Description", "callback_data": "action_correct" }
           ]
         ]
       }
@@ -393,6 +424,13 @@ module.exports = async (req, res) => {
       await handleGenerate(chatId, messageId);
     } else if (data === 'action_clear') {
       await handleClear(chatId, messageId);
+    } else if (data === 'action_correct') {
+      await db.updateSession(chatId, { state: 'AWAITING_CORRECTION' });
+      await sendTelegram('sendMessage', {
+        chat_id: chatId,
+        text: '✍️ *Submit Description Correction*\n\nPlease paste or type the exact corrected sales description now. I will save this description and the screenshots in my database to help improve my AI generation for future accounts!',
+        parse_mode: 'Markdown'
+      });
     } else if (data.startsWith('game_')) {
       const gameName = data.substring(5);
       await db.updateSession(chatId, { game_name: gameName, state: 'AWAITING_TEMPLATE_PREFERENCE' });
@@ -709,6 +747,24 @@ Please upload screenshots, or click the buttons below the status message to proc
           parse_mode: 'Markdown'
         });
         await updateDashboard(chatId, updatedSession, allFiles.length);
+        return res.status(200).send('OK');
+      } else if (state === 'AWAITING_CORRECTION') {
+        const fileIds = await db.getImages(chatId);
+        if (fileIds && fileIds.length > 0) {
+          await db.addFewShotExample(session.game_name || 'General Game', fileIds, text);
+          await sendTelegram('sendMessage', {
+            chat_id: chatId,
+            text: '✅ *Correction saved successfully!*\n\nI have registered this example in my database. I will use it as a reference to keep improving and generate more accurate descriptions for future accounts! 🚀',
+            parse_mode: 'Markdown'
+          });
+        } else {
+          await sendTelegram('sendMessage', {
+            chat_id: chatId,
+            text: '⚠️ *Could not save correction:* No active screenshots were found in this session.',
+            parse_mode: 'Markdown'
+          });
+        }
+        await handleClear(chatId);
         return res.status(200).send('OK');
       }
     }

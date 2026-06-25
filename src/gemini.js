@@ -53,7 +53,7 @@ async function callGeminiWithFallback(ai, contents, config = {}) {
   });
 }
 
-async function generateDescription(imageBuffers, gameName, templatePref, customTemplate) {
+async function generateDescription(imageBuffers, gameName, templatePref, customTemplate, fewShotExamples = []) {
   const ai = getGeminiClient();
 
   // Convert image buffers to the inlineData format expected by Gemini API
@@ -84,6 +84,18 @@ CRITICAL RULES FOR ACCURACY & ZERO HALLUCINATION:
    - You must extract and transcribe this ID/UID with 100% precision. Pay extremely close attention to every digit. Do NOT confuse numbers/characters (e.g., do not misread '8' as '0', '5' as 'S', '1' as 'l', or '6' as '8'). Double check each character against the image.
    - Under no circumstances guess, extrapolate, or invent a placeholder or random ID.
    - If no player ID/UID is clearly visible and legible in the screenshots, or if it is blurred, cut off, or illegible, you MUST NOT output it. You must **COMPLETELY DELETE/OMIT** the ID/UID field or line from the final description.
+6. **SPECIALIZED RULES FOR POKÉMON GO (PG / POKÉMON GO) ACCOUNTS:**
+   - **Trainer Profile & Stats:** Look at the Trainer Profile screen (which shows the avatar, trainer name, level e.g. "50", current XP, team logo Instinct/Valor/Mystic, and Start Date e.g. "Start Date: 2016-07-06"). It also lists Medals/Stats like "Pokémon Caught: 104,821".
+     - Extract the Trainer Nickname, Level, XP, Team Name, and Start Date exactly. If the Trainer Profile screen is not provided, omit these.
+     - **CRITICAL:** Do NOT confuse the "Total Pokémon Caught" count (from the profile stats, e.g., "104,821") with the current Pokémon inventory storage count (displayed on the Pokémon list inventory screen as "850/900", where 850 is the current inventory size and 900 is the storage limit). These are completely different metrics!
+   - **Shiny, Legendary, and Shiny Legendary Counts:**
+     - Pokémon inventory screens often display a search filter in the top bar (e.g. searching "shiny", "legendary", or "shiny&legendary").
+     - Next to the search bar (or below it), a text header displays the count of matching Pokémon (for example, "123" or "123 / 1500" where 123 is the matching count).
+     - You MUST read this number from the filter header to get the exact counts of "Shinies", "Legendaries", or "Shiny Legendaries".
+     - Do NOT count the icons on the screen manually. Do NOT invent a count.
+     - If the search/filter count header is not visible (e.g. if the user didn't upload search results screens for "shiny" or "legendary"), you must **COMPLETELY OMIT** those counts. Never guess or fabricate them.
+   - **Stardust & Pokecoins:**
+     - Stardust (a purple star symbol with a count next to it) and Pokecoins (a gold coin symbol with a count next to it) are displayed at the bottom of the Pokémon inventory screen or on the profile screen. Extract them exactly. If they are not visible, omit them.
 
 SALES LAYOUT & FORMATTING:
 ${templatePref === 'CUSTOM' ? `
@@ -104,13 +116,35 @@ You have complete freedom to design the structure of the sales description dynam
 Your output must consist ONLY of the generated sales description. Do not add any markdown block wrappers (like \`\`\`) around the description itself, just output the plain formatted text. Do not add any conversational text before or after the description.
 `;
 
-  try {
-    const response = await callGeminiWithFallback(ai, [
-      {
+  const contents = [];
+
+  // Add visual few-shot reference examples as conversational turns
+  for (const example of fewShotExamples) {
+    if (example.imageBuffers && example.imageBuffers.length > 0) {
+      contents.push({
         role: 'user',
-        parts: imageParts
-      }
-    ], {
+        parts: example.imageBuffers.map((buf) => ({
+          inlineData: {
+            data: buf.toString('base64'),
+            mimeType: 'image/jpeg'
+          }
+        }))
+      });
+      contents.push({
+        role: 'model',
+        parts: [{ text: example.description }]
+      });
+    }
+  }
+
+  // Add the current user turn containing active images
+  contents.push({
+    role: 'user',
+    parts: imageParts
+  });
+
+  try {
+    const response = await callGeminiWithFallback(ai, contents, {
       temperature: 0.0,
       systemInstruction: systemInstruction
     });

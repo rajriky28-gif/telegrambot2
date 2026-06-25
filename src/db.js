@@ -7,6 +7,7 @@ const processedUpdates = new Set();
 const botKeysMemory = new Map();
 const keyUsersMemory = new Map(); // key_code -> array of { userId, username, boundAt }
 const keyAlertsMemory = [];
+const fewShotExamplesMemory = [];
 
 const isPostgresEnabled = () => {
   return !!(process.env.POSTGRES_URL || process.env.POSTGRES_PRISMA_URL || process.env.POSTGRES_URL_NON_POOLING);
@@ -64,6 +65,17 @@ async function initDb() {
         telegram_user_id VARCHAR(50) NOT NULL,
         username VARCHAR(100),
         reason VARCHAR(100) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `;
+
+    // Create few_shot_examples table
+    await sql`
+      CREATE TABLE IF NOT EXISTS few_shot_examples (
+        id SERIAL PRIMARY KEY,
+        game_name VARCHAR(100) NOT NULL,
+        file_ids TEXT NOT NULL,
+        corrected_description TEXT NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `;
@@ -657,6 +669,67 @@ async function unbindUser(keyCode, telegramUserId) {
   }
 }
 
+async function addFewShotExample(gameName, fileIds, correctedDescription) {
+  const game = String(gameName).trim();
+  const desc = String(correctedDescription).trim();
+
+  if (!isPostgresEnabled()) {
+    fewShotExamplesMemory.push({
+      game_name: game,
+      file_ids: fileIds,
+      corrected_description: desc,
+      created_at: new Date()
+    });
+    if (fewShotExamplesMemory.length > 50) {
+      fewShotExamplesMemory.shift();
+    }
+    return;
+  }
+
+  try {
+    const fileIdsStr = JSON.stringify(fileIds);
+    await sql`
+      INSERT INTO few_shot_examples (game_name, file_ids, corrected_description)
+      VALUES (${game}, ${fileIdsStr}, ${desc});
+    `;
+  } catch (err) {
+    console.error('Error adding few-shot example:', err);
+    throw err;
+  }
+}
+
+async function getFewShotExamples(gameName, limit = 3) {
+  const game = String(gameName).trim();
+
+  if (!isPostgresEnabled()) {
+    return fewShotExamplesMemory
+      .filter(ex => ex.game_name.toLowerCase() === game.toLowerCase())
+      .sort((a, b) => b.created_at - a.created_at)
+      .slice(0, limit)
+      .map(ex => ({
+        file_ids: ex.file_ids,
+        corrected_description: ex.corrected_description
+      }));
+  }
+
+  try {
+    const { rows } = await sql`
+      SELECT file_ids, corrected_description
+      FROM few_shot_examples
+      WHERE LOWER(game_name) = LOWER(${game})
+      ORDER BY created_at DESC
+      LIMIT ${limit};
+    `;
+    return rows.map(row => ({
+      file_ids: JSON.parse(row.file_ids),
+      corrected_description: row.corrected_description
+    }));
+  } catch (err) {
+    console.error('Error fetching few-shot examples:', err);
+    return [];
+  }
+}
+
 module.exports = {
   initDb,
   addImage,
@@ -678,5 +751,7 @@ module.exports = {
   logAlert,
   getAlerts,
   clearAlerts,
-  unbindUser
+  unbindUser,
+  addFewShotExample,
+  getFewShotExamples
 };
