@@ -643,10 +643,9 @@ function getAdminPortalHtml() {
         const res = await fetch('/api/admin', {
           method: 'POST',
           headers: { 
-            'Content-Type': 'application/json',
-            'Authorization': password
+            'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ action: 'list' })
+          body: JSON.stringify({ action: 'list', password: password })
         });
 
         if (res.status === 401) {
@@ -789,10 +788,9 @@ function getAdminPortalHtml() {
         const res = await fetch('/api/admin', {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
-            'Authorization': pin
+            'Content-Type': 'application/json'
           },
-          body: JSON.stringify(payload)
+          body: JSON.stringify({ ...payload, password: pin })
         });
 
         if (res.status === 401) {
@@ -882,7 +880,7 @@ module.exports = async (req, res) => {
   const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
 
   const getAuthPass = (req) => {
-    return req.headers['authorization'] || '';
+    return (req.body && req.body.password) || req.headers['authorization'] || '';
   };
 
   const isAuthorized = (req) => {
