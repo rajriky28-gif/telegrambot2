@@ -79,6 +79,11 @@ CRITICAL RULES FOR ACCURACY & ZERO HALLUCINATION:
    - **Owned/Unlocked Assets:** These are fully colored, bright, vivid, and have no lock symbols or purchase prices.
    - **Locked/Not Owned Assets:** These are faded, greyed out, darkened, desaturated, or semi-transparent. They often display lock icons, purchase prices (e.g., in diamonds/gold), or "Get/Buy" buttons.
    - **Faction/Category Counters (e.g., "Grand (2/105)"):** If a grid header displays a fraction like \`Category (Numerator/Denominator)\`, the numerator is the actual count of owned assets, and the denominator is the total catalog size. You must ONLY list the fully colored (owned) assets. For example, if a grid is titled "Grand (2/105)" and shows only 2 colored skins (Leona Karina, Fluffy Dream Floryn) and the rest are greyed out (Arrow of Spring Miya, Mistbender Nana, Obi-Wan Kenobi Alucard, etc.), you must **ONLY list the 2 colored skins**. Do NOT include the faded/greyed-out skins in your output. This applies to skins, heroes, characters, emotes, weapons, cards, and collectibles across all games (MLBB, Brawl Stars, Clash of Clans, Free Fire, PUBG, etc.).
+5. **STRICT GAME ID / USER ID / UID RULE (CRITICAL):**
+   - Game account screenshots (specifically profile, settings, or main lobby screens) often display a Game ID, User ID, UID, Account ID, or Character ID (for example: "ID: 12345678 (2041)" or "UID: 987654321").
+   - You must extract and transcribe this ID/UID with 100% precision. Pay extremely close attention to every digit. Do NOT confuse numbers/characters (e.g., do not misread '8' as '0', '5' as 'S', '1' as 'l', or '6' as '8'). Double check each character against the image.
+   - Under no circumstances guess, extrapolate, or invent a placeholder or random ID.
+   - If no player ID/UID is clearly visible and legible in the screenshots, or if it is blurred, cut off, or illegible, you MUST NOT output it. You must **COMPLETELY DELETE/OMIT** the ID/UID field or line from the final description.
 
 SALES LAYOUT & FORMATTING:
 ${templatePref === 'CUSTOM' ? `
@@ -86,7 +91,8 @@ You MUST follow this template structure EXACTLY. Extract the values from the scr
 --- TEMPLATE START ---
 ${customTemplate}
 --- TEMPLATE END ---
-Do not add any "N/A", "0", or "Not shown" placeholders for missing items. If a placeholder line from the custom template cannot be filled because the item/value is not visible in the screenshots, **completely delete/omit that line** from your output. Do NOT guess or fill random data.
+Do not add any "N/A", "0", or "Not shown" placeholders for missing items. If a placeholder line from the custom template cannot be filled because the item/value is not visible in the screenshots, **completely delete/omit that line** from your output.
+For fields requesting an ID, User ID, Game ID, UID, or Account ID: if the exact ID/UID is not clearly visible and legible in the screenshots, you MUST completely delete/omit the entire line from the description. Never guess or hallucinate any numbers or digits for the ID/UID.
 ` : `
 You have complete freedom to design the structure of the sales description dynamically to highlight the account's top features.
 - Identify the game's core high-value assets shown in the screenshots (e.g. rare characters, levels, skins, rank, premium items, resources).
