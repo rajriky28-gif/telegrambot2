@@ -449,10 +449,13 @@ module.exports = async (req, res) => {
           let errorMsg = 'This key is invalid. Please verify and try again.';
           if (keyCheck.error === 'DEACTIVATED') {
             errorMsg = 'This key has been deactivated by the admin.';
+            await db.logAlert(text, userId, username, 'DEACTIVATED_KEY_USED');
           } else if (keyCheck.error === 'EXPIRED') {
             errorMsg = 'This key has expired.';
+            await db.logAlert(text, userId, username, 'EXPIRED_KEY_USED');
           } else if (keyCheck.error === 'LIMIT_EXCEEDED') {
             errorMsg = 'This key has reached its maximum user/device limit and cannot be bound to another account.';
+            await db.logAlert(text, userId, username, 'LIMIT_EXCEEDED');
           }
 
           await sendTelegram('sendMessage', {

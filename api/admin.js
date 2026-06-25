@@ -504,6 +504,127 @@ function getAdminPortalHtml() {
       transform: translateY(0);
       opacity: 1;
     }
+
+    /* Modal Detail View */
+    #detail-modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(11, 11, 18, 0.85);
+      backdrop-filter: blur(12px);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 9999;
+      opacity: 0;
+      transition: opacity 0.25s ease;
+    }
+
+    #detail-modal-overlay.show {
+      opacity: 1;
+    }
+
+    .modal-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 30px;
+      width: 100%;
+      max-width: 550px;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.5), 0 0 50px var(--glow);
+      position: relative;
+      transform: scale(0.9);
+      transition: transform 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    #detail-modal-overlay.show .modal-card {
+      transform: scale(1);
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .modal-title {
+      font-size: 20px;
+      font-weight: 700;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .modal-close {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-close:hover {
+      color: var(--danger);
+    }
+
+    .modal-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .modal-item {
+      background: rgba(0,0,0,0.25);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 16px;
+      text-align: left;
+    }
+
+    .modal-item-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 4px;
+    }
+
+    .modal-item-value {
+      font-size: 15px;
+      font-weight: 500;
+      color: #fff;
+    }
+
+    .modal-section-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      text-align: left;
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 12px;
+      margin-top: 24px;
+      padding-top: 18px;
+      border-top: 1px solid var(--border);
+    }
   </style>
 </head>
 <body>
@@ -560,36 +681,53 @@ function getAdminPortalHtml() {
     </div>
 
     <div class="main-grid">
-      <!-- Left column: Generator -->
-      <div class="dashboard-panel">
-        <h2 class="panel-title">🛡️ Generate New Key</h2>
-        
-        <div class="form-row">
-          <label for="gen-code">Custom Key Code (Optional)</label>
-          <div style="display: flex; gap: 10px;">
-            <input type="text" id="gen-code" class="input-field" placeholder="e.g. PREMIUM-30DAY" style="text-transform: uppercase; flex-grow: 1;">
-            <button class="btn" style="width: auto; padding: 12px 16px; background: rgba(255,255,255,0.06); border: 1px solid var(--border); box-shadow: none;" onclick="suggestRandomCode()" type="button" title="Generate Random Code">🎲</button>
+      <!-- Left column: Generator & Security Alerts -->
+      <div style="display: flex; flex-direction: column; gap: 30px;">
+        <div class="dashboard-panel">
+          <h2 class="panel-title">🛡️ Generate New Key</h2>
+          
+          <div class="form-row">
+            <label for="gen-code">Custom Key Code (Optional)</label>
+            <div style="display: flex; gap: 10px;">
+              <input type="text" id="gen-code" class="input-field" placeholder="e.g. PREMIUM-30DAY" style="text-transform: uppercase; flex-grow: 1;">
+              <button class="btn" style="width: auto; padding: 12px 16px; background: rgba(255,255,255,0.06); border: 1px solid var(--border); box-shadow: none;" onclick="suggestRandomCode()" type="button" title="Generate Random Code">🎲</button>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <label for="gen-buyer">Buyer Name / Notes (Optional)</label>
+            <input type="text" id="gen-buyer" class="input-field" placeholder="e.g. John Doe / @username">
+          </div>
+
+          <div class="form-row">
+            <label for="gen-limit">Account (Device) Limit</label>
+            <input type="number" id="gen-limit" class="input-field" min="1" max="100" value="1">
+          </div>
+
+          <div class="form-row">
+            <label for="gen-duration">Key Expiration Duration</label>
+            <select id="gen-duration" class="input-field" style="background: rgba(0,0,0,0.3)">
+              <option value="1">1 Day</option>
+              <option value="7">7 Days</option>
+              <option value="30" selected>30 Days</option>
+              <option value="90">90 Days</option>
+              <option value="365">1 Year</option>
+              <option value="0">Lifetime (No Expiry)</option>
+            </select>
+          </div>
+
+          <button class="btn" style="margin-top: 10px;" onclick="generateKey()">⚡ Generate Key</button>
+        </div>
+
+        <div class="dashboard-panel">
+          <div class="panel-title" style="margin-bottom: 15px;">
+            <span>🚨 Security Alerts</span>
+            <button onclick="clearAlertsList()" style="background: none; border: none; color: var(--danger); font-size: 13px; font-weight: 500; cursor: pointer;">Clear Logs</button>
+          </div>
+          <div id="alerts-list-body" style="max-height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;">
+            <div style="color: var(--text-muted); font-size: 13px; text-align: center; padding: 15px;">No security alerts logged.</div>
           </div>
         </div>
-
-        <div class="form-row">
-          <label for="gen-limit">Account (Device) Limit</label>
-          <input type="number" id="gen-limit" class="input-field" min="1" max="100" value="1">
-        </div>
-
-        <div class="form-row">
-          <label for="gen-duration">Key Expiration Duration</label>
-          <select id="gen-duration" class="input-field" style="background: rgba(0,0,0,0.3)">
-            <option value="1">1 Day</option>
-            <option value="7">7 Days</option>
-            <option value="30" selected>30 Days</option>
-            <option value="90">90 Days</option>
-            <option value="365">1 Year</option>
-            <option value="0">Lifetime (No Expiry)</option>
-          </select>
-        </div>
-
-        <button class="btn" style="margin-top: 10px;" onclick="generateKey()">⚡ Generate Key</button>
       </div>
 
       <!-- Right column: Keys Database -->
@@ -607,7 +745,7 @@ function getAdminPortalHtml() {
             <thead>
               <tr>
                 <th>Key Code</th>
-                <th>Limits</th>
+                <th>Used / Limit</th>
                 <th>Expiration</th>
                 <th>Status</th>
                 <th>Bound Accounts</th>
@@ -628,6 +766,52 @@ function getAdminPortalHtml() {
   <!-- Popup Notification -->
   <div id="toast" class="notification">
     <span id="toast-text">Success message goes here</span>
+  </div>
+
+  <!-- Key Detail Modal -->
+  <div id="detail-modal-overlay" onclick="closeModal(event)">
+    <div class="modal-card" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <div class="modal-title">
+          <span>🔑 Key Details</span>
+          <span id="modal-key-badge" class="key-badge" style="font-size: 13px;">KEY-CODE</span>
+        </div>
+        <button class="modal-close" onclick="hideModal()">✕</button>
+      </div>
+
+      <div class="modal-grid">
+        <div class="modal-item">
+          <div class="modal-item-label">Status</div>
+          <div class="modal-item-value" id="modal-status">-</div>
+        </div>
+        <div class="modal-item">
+          <div class="modal-item-label">Used / Limit</div>
+          <div class="modal-item-value" id="modal-limits">-</div>
+        </div>
+        <div class="modal-item" style="grid-column: span 2;">
+          <div class="modal-item-label">Buyer Name / Notes</div>
+          <div class="modal-item-value" id="modal-buyer">-</div>
+        </div>
+        <div class="modal-item" style="grid-column: span 2;">
+          <div class="modal-item-label">Expiration Date</div>
+          <div class="modal-item-value" id="modal-expiry">-</div>
+        </div>
+      </div>
+
+      <div>
+        <div class="modal-section-title">
+          <span>👥 Bound Accounts</span>
+        </div>
+        <div id="modal-bound-users-list" style="display: flex; flex-direction: column; gap: 8px; max-height: 150px; overflow-y: auto;">
+          <span style="color: var(--text-muted); font-size: 13px;">No active bindings</span>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button id="modal-btn-toggle" class="btn" style="flex-grow: 1; font-size: 14px; padding: 10px;" onclick="modalToggleStatus()">Disable Key</button>
+        <button id="modal-btn-delete" class="btn" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: var(--danger); box-shadow: none; flex-grow: 1; font-size: 14px; padding: 10px;" onclick="modalDeleteKey()">Delete Key</button>
+      </div>
+    </div>
   </div>
 
   <script>
@@ -672,6 +856,7 @@ function getAdminPortalHtml() {
 
         const data = await res.json();
         globalKeys = data.keys || [];
+        const alerts = data.alerts || [];
         
         // Hide login, show dashboard
         document.getElementById('login-overlay').style.display = 'none';
@@ -679,6 +864,7 @@ function getAdminPortalHtml() {
         
         renderMetrics(globalKeys);
         renderTable(globalKeys);
+        renderAlerts(alerts);
       } catch (err) {
         showToast('❌ Connection error: ' + err.message);
       }
@@ -716,9 +902,7 @@ function getAdminPortalHtml() {
       tbody.innerHTML = '';
 
       if (keys.length === 0) {
-        tbody.innerHTML = \`<tr>
-          <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 30px;">No keys found. Generate one to begin.</td>
-        </tr>\`;
+        tbody.innerHTML = "<tr><td colspan='6' style='text-align: center; color: var(--text-muted); padding: 30px;'>No keys found. Generate one to begin.</td></tr>";
         return;
       }
 
@@ -734,7 +918,9 @@ function getAdminPortalHtml() {
 
         // Limit display
         const activeUsersCount = k.users ? k.users.length : 0;
-        const limitDisplay = \`\${activeUsersCount} / \${k.max_users}\`;
+        const isFull = activeUsersCount >= k.max_users;
+        const limitColor = isFull ? 'var(--success)' : 'var(--text-muted)';
+        const limitDisplay = "<strong style='color: " + limitColor + ";'>" + activeUsersCount + "</strong> / <span style='color: var(--text-muted);'>" + k.max_users + "</span>";
 
         // Status badge
         let statusClass = 'status-active';
@@ -752,47 +938,30 @@ function getAdminPortalHtml() {
         if (k.users && k.users.length > 0) {
           k.users.forEach(u => {
             const userNameDisplay = u.username ? '@' + u.username : 'User';
-            usersHtml += \`<div class="bound-user">
-              <span class="bound-user-name">\${userNameDisplay}</span>
-              <span class="bound-user-id">\${u.user_id}</span>
-            </div>\`;
+            usersHtml += "<div class='bound-user'><span class='bound-user-name'>" + userNameDisplay + "</span><div style='display: flex; align-items: center; gap: 6px;'><span class='bound-user-id'>" + u.user_id + "</span><button onclick='unbindUser(\"" + k.key_code + "\", \"" + u.user_id + "\")' title='Unbind Account' style='background: none; border: none; cursor: pointer; color: var(--danger); font-size: 10px; padding: 0 2px; display: inline-flex; align-items: center;'>❌</button></div></div>";
           });
         } else {
           usersHtml += '<span style="color: var(--text-muted); font-size: 12px;">No active bindings</span>';
         }
         usersHtml += '</div>';
 
-        tr.innerHTML = \`
-          <td>
-            <div class="key-badge">
-              <span>\${k.key_code}</span>
-              <button class="btn-copy" onclick="copyKey('\${k.key_code}')" title="Copy Key">📋</button>
-            </div>
-          </td>
-          <td style="font-weight: 500;">\${limitDisplay}</td>
-          <td style="color: var(--text-muted);">\${expiryText}</td>
-          <td>
-            <span class="status-badge \${statusClass}">\${statusLabel}</span>
-          </td>
-          <td>\${usersHtml}</td>
-          <td>
-            <div class="action-icons">
-              <button class="btn-action \${k.status === 'ACTIVE' ? 'btn-toggle-deactive' : 'btn-toggle-active'}" 
-                      onclick="toggleKey('\${k.key_code}', '\${k.status === 'ACTIVE' ? 'DEACTIVATED' : 'ACTIVE'}')" 
-                      title="\${k.status === 'ACTIVE' ? 'Disable Key' : 'Enable Key'}">
-                \${k.status === 'ACTIVE' ? '🔒' : '🔓'}
-              </button>
-              <button class="btn-action btn-delete" onclick="deleteKey('\${k.key_code}')" title="Delete Key">🗑️</button>
-            </div>
-          </td>
-        \`;
+        const toggleIcon = k.status === 'ACTIVE' ? '🔒' : '🔓';
+        const toggleTitle = k.status === 'ACTIVE' ? 'Disable Key' : 'Enable Key';
+        const toggleStatusVal = k.status === 'ACTIVE' ? 'DEACTIVATED' : 'ACTIVE';
+        const toggleClass = k.status === 'ACTIVE' ? 'btn-toggle-deactive' : 'btn-toggle-active';
+
+        const buyerNameDisplay = k.buyer_name ? "<div style='font-size: 12px; color: var(--text-muted); margin-top: 4px; display: flex; align-items: center; gap: 4px;'>👤 <span>" + k.buyer_name + "</span></div>" : "";
+        tr.innerHTML = "<td><div class='key-badge' style='cursor: pointer; padding-right: 28px; position: relative;' onclick='showModal(\"" + k.key_code + "\")' title='View Key Details'><span>" + k.key_code + "</span><button class='btn-copy' onclick='event.stopPropagation(); copyKey(\"" + k.key_code + "\")' title='Copy Key' style='position: absolute; right: 6px; top: 50%; transform: translateY(-50%); display: inline-flex;'>📋</button></div>" + buyerNameDisplay + "</td><td style='font-weight: 500;'>" + limitDisplay + "</td><td style='color: var(--text-muted);'>" + expiryText + "</td><td><span class='status-badge " + statusClass + "'>" + statusLabel + "</span></td><td>" + usersHtml + "</td><td><div class='action-icons'><button class='btn-action " + toggleClass + "' onclick='toggleKey(\"" + k.key_code + "\", \"" + toggleStatusVal + "\")' title='" + toggleTitle + "'>" + toggleIcon + "</button><button class='btn-action btn-delete' onclick='deleteKey(\"" + k.key_code + "\")' title='Delete Key'>🗑️</button></div></td>";
         tbody.appendChild(tr);
       });
     }
 
     function filterKeys() {
       const query = document.getElementById('search-bar').value.toLowerCase().trim();
-      const filtered = globalKeys.filter(k => k.key_code.toLowerCase().includes(query));
+      const filtered = globalKeys.filter(k => 
+        k.key_code.toLowerCase().includes(query) ||
+        (k.buyer_name && k.buyer_name.toLowerCase().includes(query))
+      );
       renderTable(filtered);
     }
 
@@ -819,8 +988,10 @@ function getAdminPortalHtml() {
         }
 
         globalKeys = data.keys || [];
+        const alerts = data.alerts || [];
         renderMetrics(globalKeys);
         renderTable(globalKeys);
+        renderAlerts(alerts);
         filterKeys(); // preserve search query
         return data;
       } catch (err) {
@@ -830,12 +1001,14 @@ function getAdminPortalHtml() {
 
     async function generateKey() {
       const customCode = document.getElementById('gen-code').value.trim();
+      const buyer = document.getElementById('gen-buyer').value.trim();
       const limit = parseInt(document.getElementById('gen-limit').value, 10) || 1;
       const duration = parseInt(document.getElementById('gen-duration').value, 10);
       
       const res = await makeApiRequest({
         action: 'generate',
         keyCode: customCode,
+        buyerName: buyer,
         maxUsers: limit,
         durationDays: duration > 0 ? duration : null
       });
@@ -843,6 +1016,7 @@ function getAdminPortalHtml() {
       if (res && res.success) {
         showToast('✅ Key generated successfully: ' + res.code);
         document.getElementById('gen-code').value = '';
+        document.getElementById('gen-buyer').value = '';
       }
     }
 
@@ -864,10 +1038,185 @@ function getAdminPortalHtml() {
       showToast('🗑️ Key deleted!');
     }
 
+    async function unbindUser(code, userId) {
+      if (!confirm('Are you sure you want to unbind Telegram user ID ' + userId + ' from key ' + code + '?')) return;
+      await makeApiRequest({
+        action: 'unbind_user',
+        keyCode: code,
+        telegramUserId: userId
+      });
+      showToast('❌ Account unbound successfully!');
+    }
+
     function copyKey(code) {
       navigator.clipboard.writeText(code).then(() => {
         showToast('📋 Copied to clipboard: ' + code);
       });
+    }
+
+    function renderAlerts(alerts) {
+      const alertBody = document.getElementById('alerts-list-body');
+      if (!alertBody) return;
+      alertBody.innerHTML = '';
+      if (alerts.length === 0) {
+        alertBody.innerHTML = '<div style="color: var(--text-muted); font-size: 13px; text-align: center; padding: 15px;">No security alerts or abuse attempts logged.</div>';
+        return;
+      }
+      alerts.forEach(a => {
+        const date = new Date(a.created_at);
+        const timeStr = date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+        const userNameDisplay = a.username ? '@' + a.username : 'User';
+        
+        let reasonLabel = 'Attempted Login';
+        let reasonClass = 'style="color: var(--warning)"';
+        if (a.reason === 'LIMIT_EXCEEDED') {
+          reasonLabel = 'Limit Exceeded (Extra Login)';
+          reasonClass = 'style="color: var(--danger); font-weight: 600"';
+        } else if (a.reason === 'DEACTIVATED_KEY_USED') {
+          reasonLabel = 'Deactivated Key Attempt';
+          reasonClass = 'style="color: var(--danger)"';
+        } else if (a.reason === 'EXPIRED_KEY_USED') {
+          reasonLabel = 'Expired Key Attempt';
+          reasonClass = 'style="color: var(--warning)"';
+        }
+
+        // Look up currently bound users for the alert's key
+        const keyInfo = globalKeys.find(k => k.key_code === a.key_code);
+        const boundUsers = keyInfo && keyInfo.users ? keyInfo.users : [];
+        let boundInfoHtml = '';
+        if (boundUsers && boundUsers.length > 0) {
+          const maxVal = keyInfo ? keyInfo.max_users : '?';
+          const userStrings = boundUsers.map(bu => {
+            const name = bu.username ? '@' + bu.username : 'User';
+            return name + ' (' + bu.user_id + ')';
+          }).join(', ');
+          boundInfoHtml = "<div style='margin-top: 6px; font-size: 11px; color: var(--text-muted); background: rgba(0,0,0,0.15); padding: 4px 8px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.03);'>🔒 <strong>Currently Bound (" + boundUsers.length + " / " + maxVal + "):</strong> " + userStrings + "</div>";
+        } else {
+          boundInfoHtml = "<div style='margin-top: 6px; font-size: 11px; color: var(--text-muted); background: rgba(0,0,0,0.15); padding: 4px 8px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.03);'>🔒 <strong>Currently Bound:</strong> No active bindings</div>";
+        }
+
+        const div = document.createElement('div');
+        div.style.cssText = 'background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px; font-size: 13px; text-align: left;';
+        
+        const topRowHtml = "<div style='display: flex; justify-content: space-between; align-items: center; width: 100%;'>" +
+          "<div>" +
+            "<span style='color: var(--text-muted); font-size: 11px; display: block;'>" + timeStr + "</span>" +
+            "<span style='font-weight: 500; color: #ef4444;'>" + userNameDisplay + "</span> <span style='font-family: monospace; color: var(--text-muted);'>(" + a.telegram_user_id + ")</span>" +
+            "<span style='display: block; margin-top: 2px;'>Key: <span class='key-badge' style='font-size: 11px; padding: 1px 5px;'>" + a.key_code + "</span></span>" +
+          "</div>" +
+          "<div " + reasonClass + ">" + reasonLabel + "</div>" +
+        "</div>";
+        
+        div.innerHTML = topRowHtml + boundInfoHtml;
+        alertBody.appendChild(div);
+      });
+    }
+
+    async function clearAlertsList() {
+      if (!confirm(\'Are you sure you want to clear all security logs and alerts?\')) return;
+      await makeApiRequest({ action: \'clear_alerts\' });
+      showToast(\'🧹 Security logs cleared!\');
+    }
+
+    let currentModalKey = null;
+
+    function showModal(keyCode) {
+      const key = globalKeys.find(k => k.key_code === keyCode);
+      if (!key) return;
+      currentModalKey = keyCode;
+
+      document.getElementById('modal-key-badge').innerHTML = key.key_code + ' <button class="btn-copy" onclick="event.stopPropagation(); copyKey(\'' + key.key_code + '\')" title="Copy Key">📋</button>';
+      
+      let statusHtml = '';
+      if (key.status === 'ACTIVE') {
+        statusHtml = '<span class="status-badge status-active">Active</span>';
+      } else if (key.status === 'DEACTIVATED') {
+        statusHtml = '<span class="status-badge status-deactivated">Disabled</span>';
+      } else if (key.status === 'EXPIRED') {
+        statusHtml = '<span class="status-badge status-expired">Expired</span>';
+      }
+      document.getElementById('modal-status').innerHTML = statusHtml;
+
+      let expiryText = 'Lifetime (No Expiry)';
+      if (key.expires_at) {
+        const date = new Date(key.expires_at);
+        expiryText = date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+      }
+      document.getElementById('modal-expiry').textContent = expiryText;
+
+      const boundCount = key.users ? key.users.length : 0;
+      const isFull = boundCount >= key.max_users;
+      const limitColor = isFull ? 'var(--success)' : 'var(--text-muted)';
+      document.getElementById('modal-limits').innerHTML = '<strong style="color: ' + limitColor + '">' + boundCount + '</strong> / ' + key.max_users + ' slots used';
+
+      document.getElementById('modal-buyer').textContent = key.buyer_name || 'No buyer name or notes added';
+
+      const userList = document.getElementById('modal-bound-users-list');
+      userList.innerHTML = '';
+      if (key.users && key.users.length > 0) {
+        key.users.forEach(u => {
+          const userNameDisplay = u.username ? '@' + u.username : 'User';
+          
+          const div = document.createElement('div');
+          div.className = 'bound-user';
+          div.style.cssText = 'display: flex; justify-content: space-between; align-items: center; padding: 6px 12px; background: rgba(255, 255, 255, 0.04); border-radius: 6px;';
+          div.innerHTML = '<span class="bound-user-name" style="font-weight: 500;">' + userNameDisplay + '</span>' +
+                          '<div style="display: flex; align-items: center; gap: 8px;">' +
+                            '<span class="bound-user-id" style="font-family: monospace; color: #818cf8; font-size: 12px;">' + u.user_id + '</span>' +
+                            '<button onclick="modalUnbindUser(\'' + key.key_code + '\', \'' + u.user_id + '\')" title="Unbind Account" style="background: none; border: none; cursor: pointer; color: var(--danger); font-size: 11px; padding: 2px; display: inline-flex; align-items: center;">❌</button>' +
+                          '</div>';
+          userList.appendChild(div);
+        });
+      } else {
+        userList.innerHTML = '<span style="color: var(--text-muted); font-size: 13px; text-align: center; display: block; padding: 10px;">No bound accounts found</span>';
+      }
+
+      const toggleBtn = document.getElementById('modal-btn-toggle');
+      if (key.status === 'ACTIVE') {
+        toggleBtn.textContent = '🔒 Disable Key';
+        toggleBtn.style.background = 'linear-gradient(135deg, #f59e0b, #d97706)';
+      } else {
+        toggleBtn.textContent = '🔓 Enable Key';
+        toggleBtn.style.background = 'linear-gradient(135deg, #10b981, #059669)';
+      }
+
+      const overlay = document.getElementById('detail-modal-overlay');
+      overlay.style.display = 'flex';
+      setTimeout(() => overlay.classList.add('show'), 10);
+    }
+
+    function hideModal() {
+      const overlay = document.getElementById('detail-modal-overlay');
+      overlay.classList.remove('show');
+      setTimeout(() => overlay.style.display = 'none', 250);
+      currentModalKey = null;
+    }
+
+    function closeModal(event) {
+      if (event.target.id === 'detail-modal-overlay') {
+        hideModal();
+      }
+    }
+
+    async function modalToggleStatus() {
+      if (!currentModalKey) return;
+      const key = globalKeys.find(k => k.key_code === currentModalKey);
+      if (!key) return;
+      const newStatus = key.status === 'ACTIVE' ? 'DEACTIVATED' : 'ACTIVE';
+      await toggleKey(currentModalKey, newStatus);
+      showModal(currentModalKey);
+    }
+
+    async function modalDeleteKey() {
+      if (!currentModalKey) return;
+      const code = currentModalKey;
+      hideModal();
+      await deleteKey(code);
+    }
+
+    async function modalUnbindUser(code, userId) {
+      await unbindUser(code, userId);
+      showModal(currentModalKey);
     }
 
     function showToast(message) {
@@ -913,12 +1262,13 @@ module.exports = async (req, res) => {
       return res.status(401).json({ error: 'Unauthorized. Invalid admin password.' });
     }
 
-    const { action, keyCode, maxUsers, durationDays, status } = req.body || {};
+    const { action, keyCode, maxUsers, durationDays, status, buyerName } = req.body || {};
 
     try {
       if (action === 'list') {
         const keys = await db.getAdminKeys();
-        return res.status(200).json({ keys });
+        const alerts = await db.getAlerts();
+        return res.status(200).json({ keys, alerts });
       }
 
       if (action === 'generate') {
@@ -939,9 +1289,10 @@ module.exports = async (req, res) => {
         const max = parseInt(maxUsers, 10) || 1;
         const duration = durationDays ? parseFloat(durationDays) : null;
 
-        await db.createKey(code, max, duration);
+        await db.createKey(code, max, duration, buyerName);
         const keys = await db.getAdminKeys();
-        return res.status(200).json({ success: true, keys, code });
+        const alerts = await db.getAlerts();
+        return res.status(200).json({ success: true, keys, alerts, code });
       }
 
       if (action === 'toggle') {
@@ -950,7 +1301,8 @@ module.exports = async (req, res) => {
         }
         await db.updateKeyStatus(keyCode, status);
         const keys = await db.getAdminKeys();
-        return res.status(200).json({ success: true, keys });
+        const alerts = await db.getAlerts();
+        return res.status(200).json({ success: true, keys, alerts });
       }
 
       if (action === 'delete') {
@@ -959,7 +1311,26 @@ module.exports = async (req, res) => {
         }
         await db.deleteKey(keyCode);
         const keys = await db.getAdminKeys();
-        return res.status(200).json({ success: true, keys });
+        const alerts = await db.getAlerts();
+        return res.status(200).json({ success: true, keys, alerts });
+      }
+
+      if (action === 'unbind_user') {
+        const { telegramUserId } = req.body || {};
+        if (!keyCode || !telegramUserId) {
+          return res.status(400).json({ error: 'Missing keyCode or telegramUserId' });
+        }
+        await db.unbindUser(keyCode, telegramUserId);
+        const keys = await db.getAdminKeys();
+        const alerts = await db.getAlerts();
+        return res.status(200).json({ success: true, keys, alerts });
+      }
+
+      if (action === 'clear_alerts') {
+        await db.clearAlerts();
+        const keys = await db.getAdminKeys();
+        const alerts = await db.getAlerts();
+        return res.status(200).json({ success: true, keys, alerts });
       }
 
       return res.status(400).json({ error: 'Invalid action specified.' });
