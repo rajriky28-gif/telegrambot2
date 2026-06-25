@@ -938,7 +938,7 @@ function getAdminPortalHtml() {
         if (k.users && k.users.length > 0) {
           k.users.forEach(u => {
             const userNameDisplay = u.username ? '@' + u.username : 'User';
-            usersHtml += "<div class='bound-user'><span class='bound-user-name'>" + userNameDisplay + "</span><div style='display: flex; align-items: center; gap: 6px;'><span class='bound-user-id'>" + u.user_id + "</span><button onclick='unbindUser(\"" + k.key_code + "\", \"" + u.user_id + "\")' title='Unbind Account' style='background: none; border: none; cursor: pointer; color: var(--danger); font-size: 10px; padding: 0 2px; display: inline-flex; align-items: center;'>❌</button></div></div>";
+            usersHtml += "<div class='bound-user'><span class='bound-user-name'>" + userNameDisplay + "</span><div style='display: flex; align-items: center; gap: 6px;'><span class='bound-user-id'>" + u.user_id + "</span><button onclick='unbindUser(\\\"" + k.key_code + "\\\", \\\"" + u.user_id + "\\\")' title='Unbind Account' style='background: none; border: none; cursor: pointer; color: var(--danger); font-size: 10px; padding: 0 2px; display: inline-flex; align-items: center;'>❌</button></div></div>";
           });
         } else {
           usersHtml += '<span style="color: var(--text-muted); font-size: 12px;">No active bindings</span>';
@@ -951,7 +951,7 @@ function getAdminPortalHtml() {
         const toggleClass = k.status === 'ACTIVE' ? 'btn-toggle-deactive' : 'btn-toggle-active';
 
         const buyerNameDisplay = k.buyer_name ? "<div style='font-size: 12px; color: var(--text-muted); margin-top: 4px; display: flex; align-items: center; gap: 4px;'>👤 <span>" + k.buyer_name + "</span></div>" : "";
-        tr.innerHTML = "<td><div class='key-badge' style='cursor: pointer; padding-right: 28px; position: relative;' onclick='showModal(\"" + k.key_code + "\")' title='View Key Details'><span>" + k.key_code + "</span><button class='btn-copy' onclick='event.stopPropagation(); copyKey(\"" + k.key_code + "\")' title='Copy Key' style='position: absolute; right: 6px; top: 50%; transform: translateY(-50%); display: inline-flex;'>📋</button></div>" + buyerNameDisplay + "</td><td style='font-weight: 500;'>" + limitDisplay + "</td><td style='color: var(--text-muted);'>" + expiryText + "</td><td><span class='status-badge " + statusClass + "'>" + statusLabel + "</span></td><td>" + usersHtml + "</td><td><div class='action-icons'><button class='btn-action " + toggleClass + "' onclick='toggleKey(\"" + k.key_code + "\", \"" + toggleStatusVal + "\")' title='" + toggleTitle + "'>" + toggleIcon + "</button><button class='btn-action btn-delete' onclick='deleteKey(\"" + k.key_code + "\")' title='Delete Key'>🗑️</button></div></td>";
+        tr.innerHTML = "<td><div class='key-badge' style='cursor: pointer; padding-right: 28px; position: relative;' onclick='showModal(\\\"" + k.key_code + "\\\")' title='View Key Details'><span>" + k.key_code + "</span><button class='btn-copy' onclick='event.stopPropagation(); copyKey(\\\"" + k.key_code + "\\\")' title='Copy Key' style='position: absolute; right: 6px; top: 50%; transform: translateY(-50%); display: inline-flex;'>📋</button></div>" + buyerNameDisplay + "</td><td style='font-weight: 500;'>" + limitDisplay + "</td><td style='color: var(--text-muted);'>" + expiryText + "</td><td><span class='status-badge " + statusClass + "'>" + statusLabel + "</span></td><td>" + usersHtml + "</td><td><div class='action-icons'><button class='btn-action " + toggleClass + "' onclick='toggleKey(\\\"" + k.key_code + "\\\", \\\"" + toggleStatusVal + "\\\")' title='" + toggleTitle + "'>" + toggleIcon + "</button><button class='btn-action btn-delete' onclick='deleteKey(\\\"" + k.key_code + "\\\")' title='Delete Key'>🗑️</button></div></td>";
         tbody.appendChild(tr);
       });
     }
@@ -1125,7 +1125,7 @@ function getAdminPortalHtml() {
       if (!key) return;
       currentModalKey = keyCode;
 
-      document.getElementById('modal-key-badge').innerHTML = key.key_code + ' <button class="btn-copy" onclick="event.stopPropagation(); copyKey(\'' + key.key_code + '\')" title="Copy Key">📋</button>';
+      document.getElementById('modal-key-badge').innerHTML = key.key_code + ' <button class="btn-copy" onclick="event.stopPropagation(); copyKey(\\\'' + key.key_code + '\\\')" title="Copy Key">📋</button>';
       
       let statusHtml = '';
       if (key.status === 'ACTIVE') {
@@ -1163,7 +1163,7 @@ function getAdminPortalHtml() {
           div.innerHTML = '<span class="bound-user-name" style="font-weight: 500;">' + userNameDisplay + '</span>' +
                           '<div style="display: flex; align-items: center; gap: 8px;">' +
                             '<span class="bound-user-id" style="font-family: monospace; color: #818cf8; font-size: 12px;">' + u.user_id + '</span>' +
-                            '<button onclick="modalUnbindUser(\'' + key.key_code + '\', \'' + u.user_id + '\')" title="Unbind Account" style="background: none; border: none; cursor: pointer; color: var(--danger); font-size: 11px; padding: 2px; display: inline-flex; align-items: center;">❌</button>' +
+                            '<button onclick="modalUnbindUser(\\\'' + key.key_code + '\\\', \\\'' + u.user_id + '\\\')" title="Unbind Account" style="background: none; border: none; cursor: pointer; color: var(--danger); font-size: 11px; padding: 2px; display: inline-flex; align-items: center;">❌</button>' +
                           '</div>';
           userList.appendChild(div);
         });
