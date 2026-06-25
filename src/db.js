@@ -3,6 +3,7 @@ const { sql } = require('@vercel/postgres');
 // In-memory fallback databases for local development/testing
 const memoryDb = new Map();
 const memorySessions = new Map();
+const processedUpdates = new Set();
 
 const isPostgresEnabled = () => {
   return !!(process.env.POSTGRES_URL || process.env.POSTGRES_PRISMA_URL || process.env.POSTGRES_URL_NON_POOLING);
@@ -28,14 +29,24 @@ async function initDb() {
       CREATE INDEX IF NOT EXISTS idx_pokemon_images_chat_id ON pokemon_images(chat_id);
     `;
     
-    // Create the sessions table to track last_message_id
+    // Create the sessions table to track last_message_id and conversational state
     await sql`
       CREATE TABLE IF NOT EXISTS pokemon_sessions (
         chat_id VARCHAR(50) PRIMARY KEY,
         last_message_id INTEGER,
+        state VARCHAR(50) DEFAULT 'AWAITING_GAME_NAME',
+        game_name VARCHAR(100),
+        template_pref VARCHAR(50),
+        custom_template TEXT,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `;
+    
+    // Add columns dynamically if the table already exists
+    await sql`ALTER TABLE pokemon_sessions ADD COLUMN IF NOT EXISTS state VARCHAR(50) DEFAULT 'AWAITING_GAME_NAME';`;
+    await sql`ALTER TABLE pokemon_sessions ADD COLUMN IF NOT EXISTS game_name VARCHAR(100);`;
+    await sql`ALTER TABLE pokemon_sessions ADD COLUMN IF NOT EXISTS template_pref VARCHAR(50);`;
+    await sql`ALTER TABLE pokemon_sessions ADD COLUMN IF NOT EXISTS custom_template TEXT;`;
 
     // Create the processed updates table for webhook deduplication
     await sql`
@@ -101,11 +112,79 @@ async function getImages(chatId) {
   }
 }
 
+const defaultSession = {
+  state: 'AWAITING_GAME_NAME',
+  game_name: null,
+  template_pref: null,
+  custom_template: null,
+  last_message_id: null
+};
+
+async function getSession(chatId) {
+  const chatIdStr = String(chatId);
+  if (!isPostgresEnabled()) {
+    if (!memorySessions.has(chatIdStr)) {
+      memorySessions.set(chatIdStr, { ...defaultSession });
+    }
+    return memorySessions.get(chatIdStr);
+  }
+
+  try {
+    const { rows } = await sql`
+      SELECT state, game_name, template_pref, custom_template, last_message_id 
+      FROM pokemon_sessions
+      WHERE chat_id = ${chatIdStr};
+    `;
+    if (rows && rows.length > 0) {
+      return {
+        state: rows[0].state || 'AWAITING_GAME_NAME',
+        game_name: rows[0].game_name,
+        template_pref: rows[0].template_pref,
+        custom_template: rows[0].custom_template,
+        last_message_id: rows[0].last_message_id
+      };
+    }
+    return { ...defaultSession };
+  } catch (error) {
+    console.error('Error getting session:', error);
+    return { ...defaultSession };
+  }
+}
+
+async function updateSession(chatId, updates) {
+  const chatIdStr = String(chatId);
+  const current = await getSession(chatId);
+  const updated = { ...current, ...updates };
+
+  if (!isPostgresEnabled()) {
+    memorySessions.set(chatIdStr, updated);
+    return;
+  }
+
+  try {
+    await sql`
+      INSERT INTO pokemon_sessions (chat_id, state, game_name, template_pref, custom_template, last_message_id, updated_at)
+      VALUES (${chatIdStr}, ${updated.state}, ${updated.game_name}, ${updated.template_pref}, ${updated.custom_template}, ${updated.last_message_id}, CURRENT_TIMESTAMP)
+      ON CONFLICT (chat_id)
+      DO UPDATE SET 
+        state = EXCLUDED.state,
+        game_name = EXCLUDED.game_name,
+        template_pref = EXCLUDED.template_pref,
+        custom_template = EXCLUDED.custom_template,
+        last_message_id = EXCLUDED.last_message_id,
+        updated_at = CURRENT_TIMESTAMP;
+    `;
+  } catch (error) {
+    console.error('Error updating session:', error);
+    throw error;
+  }
+}
+
 async function clearImages(chatId) {
   const chatIdStr = String(chatId);
   if (!isPostgresEnabled()) {
     memoryDb.delete(chatIdStr);
-    memorySessions.delete(chatIdStr);
+    memorySessions.set(chatIdStr, { ...defaultSession });
     console.log(`[Memory DB] Cleared images and session for chat ${chatIdStr}`);
     return;
   }
@@ -116,7 +195,8 @@ async function clearImages(chatId) {
       WHERE chat_id = ${chatIdStr};
     `;
     await sql`
-      DELETE FROM pokemon_sessions
+      UPDATE pokemon_sessions 
+      SET state = 'AWAITING_GAME_NAME', game_name = NULL, template_pref = NULL, custom_template = NULL, last_message_id = NULL
       WHERE chat_id = ${chatIdStr};
     `;
     console.log(`[Postgres DB] Cleared images and session for chat ${chatIdStr}`);
@@ -127,46 +207,12 @@ async function clearImages(chatId) {
 }
 
 async function setLastMessageId(chatId, messageId) {
-  const chatIdStr = String(chatId);
-  if (!isPostgresEnabled()) {
-    memorySessions.set(chatIdStr, messageId);
-    console.log(`[Memory DB] Set last status message ID to ${messageId} for chat ${chatIdStr}`);
-    return;
-  }
-
-  try {
-    await sql`
-      INSERT INTO pokemon_sessions (chat_id, last_message_id, updated_at)
-      VALUES (${chatIdStr}, ${messageId}, CURRENT_TIMESTAMP)
-      ON CONFLICT (chat_id)
-      DO UPDATE SET last_message_id = ${messageId}, updated_at = CURRENT_TIMESTAMP;
-    `;
-    console.log(`[Postgres DB] Set last status message ID to ${messageId} for chat ${chatIdStr}`);
-  } catch (error) {
-    console.error('Error setting last message ID:', error);
-    throw error;
-  }
+  await updateSession(chatId, { last_message_id: messageId });
 }
 
 async function getLastMessageId(chatId) {
-  const chatIdStr = String(chatId);
-  if (!isPostgresEnabled()) {
-    return memorySessions.get(chatIdStr) || null;
-  }
-
-  try {
-    const { rows } = await sql`
-      SELECT last_message_id FROM pokemon_sessions
-      WHERE chat_id = ${chatIdStr};
-    `;
-    if (rows && rows.length > 0) {
-      return rows[0].last_message_id;
-    }
-    return null;
-  } catch (error) {
-    console.error('Error getting last message ID:', error);
-    return null;
-  }
+  const session = await getSession(chatId);
+  return session.last_message_id;
 }
 
 async function checkAndMarkUpdateProcessed(updateId) {
@@ -210,5 +256,7 @@ module.exports = {
   setLastMessageId,
   getLastMessageId,
   checkAndMarkUpdateProcessed,
-  isPostgresEnabled
+  isPostgresEnabled,
+  getSession,
+  updateSession
 };
