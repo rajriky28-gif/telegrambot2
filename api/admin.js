@@ -566,7 +566,10 @@ function getAdminPortalHtml() {
         
         <div class="form-row">
           <label for="gen-code">Custom Key Code (Optional)</label>
-          <input type="text" id="gen-code" class="input-field" placeholder="e.g. PREMIUM-30DAY" style="text-transform: uppercase;">
+          <div style="display: flex; gap: 10px;">
+            <input type="text" id="gen-code" class="input-field" placeholder="e.g. PREMIUM-30DAY" style="text-transform: uppercase; flex-grow: 1;">
+            <button class="btn" style="width: auto; padding: 12px 16px; background: rgba(255,255,255,0.06); border: 1px solid var(--border); box-shadow: none;" onclick="suggestRandomCode()" type="button" title="Generate Random Code">🎲</button>
+          </div>
         </div>
 
         <div class="form-row">
@@ -637,6 +640,17 @@ function getAdminPortalHtml() {
         loadDashboard(pin);
       }
     });
+
+    function suggestRandomCode() {
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+      let p1 = '';
+      let p2 = '';
+      for (let i = 0; i < 4; i++) {
+        p1 += chars.charAt(Math.floor(Math.random() * chars.length));
+        p2 += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      document.getElementById('gen-code').value = "KEY-" + p1 + "-" + p2;
+    }
 
     async function loadDashboard(password) {
       try {
