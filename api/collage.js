@@ -92,6 +92,12 @@ bot.on('message:photo', async (ctx) => {
   try {
     const userId = ctx.from.id;
 
+    const currentImages = await collageDb.getImages(userId);
+    if (currentImages.length >= 36) {
+      await ctx.reply("⚠️ *Queue limit reached:* You can queue at most 36 photos for a single collage to prevent server timeouts. Please click grid sizes to stitch your current photos, or clear the queue.", { parse_mode: 'Markdown' });
+      return;
+    }
+
     // Telegram sends photos in an array of different sizes.
     // Select the highest resolution version available to maximize image quality.
     const photo = ctx.message.photo[ctx.message.photo.length - 1];
@@ -254,6 +260,12 @@ bot.on('message', async (ctx) => {
   await ctx.reply("⚠️ Please send images as photos (compressed files) so I can add them to the collage.");
 });
 
+bot.catch((err) => {
+  const ctx = err.ctx;
+  console.error(`[Collage Bot] Error while handling update ${ctx.update.update_id}:`, err.error);
+  ctx.reply("❌ *Sorry, something went wrong while processing your request.* Please try again later.", { parse_mode: 'Markdown' }).catch(() => {});
+});
+
 // Export webhook callback compatible with Vercel serverless environment
 const handleWebhook = webhookCallback(bot, 'http');
 
@@ -270,5 +282,15 @@ module.exports = async (req, res) => {
     res.end('<h1>📸 Collage Maker Bot is running!</h1><p>Configure this URL as a webhook in Telegram to start using the bot.</p>');
     return;
   }
-  return handleWebhook(req, res);
+
+  try {
+    await handleWebhook(req, res);
+  } catch (err) {
+    console.error('[Collage Bot Webhook] Execution Error:', err);
+    // Return 200 OK to Telegram so it does not retry failed updates infinitely and lock up the server
+    if (!res.headersSent) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, error: err.message }));
+    }
+  }
 };

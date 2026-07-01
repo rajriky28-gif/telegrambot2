@@ -12,6 +12,7 @@ const fewShotExamplesMemory = [];
 const isPostgresEnabled = () => {
   return !!(process.env.POSTGRES_URL || process.env.POSTGRES_PRISMA_URL || process.env.POSTGRES_URL_NON_POOLING);
 };
+let initDbPromise = null;
 
 async function initDb() {
   if (!isPostgresEnabled()) {
@@ -19,7 +20,12 @@ async function initDb() {
     return;
   }
 
-  try {
+  if (initDbPromise) {
+    return initDbPromise;
+  }
+
+  initDbPromise = (async () => {
+    try {
     // Create the image list table if it doesn't exist
     await sql`
       CREATE TABLE IF NOT EXISTS pokemon_images (
@@ -118,10 +124,14 @@ async function initDb() {
     `;
     
     console.log('PostgreSQL database initialized successfully.');
-  } catch (error) {
-    console.error('Error initializing PostgreSQL database:', error);
-    throw error;
-  }
+    } catch (error) {
+      console.error('Error initializing PostgreSQL database:', error);
+      initDbPromise = null; // Reset on failure so the next request can retry
+      throw error;
+    }
+  })();
+
+  return initDbPromise;
 }
 
 async function addImage(chatId, fileId) {
