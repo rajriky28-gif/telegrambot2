@@ -56,58 +56,76 @@ async function callGeminiWithFallback(ai, contents, config = {}) {
 async function generateDescription(imageBuffers, gameName, templatePref, customTemplate, fewShotExamples = []) {
   const ai = getGeminiClient();
 
-  // Convert image buffers to the inlineData format expected by Gemini API
-  const imageParts = imageBuffers.map((buffer) => ({
-    inlineData: {
-      data: buffer.toString('base64'),
-      mimeType: 'image/jpeg' // Telegram photos are downloaded as jpegs
-    }
-  }));
+  // Step 1: Parallel Factual Extraction from each screenshot individually
+  console.log(`[Gemini Pipeline] Starting Step 1: Factual Extraction for ${imageBuffers.length} images in parallel...`);
+  
+  const extractPromises = imageBuffers.map(async (buffer, index) => {
+    const singleImagePart = {
+      inlineData: {
+        data: buffer.toString('base64'),
+        mimeType: 'image/jpeg'
+      }
+    };
 
-  const systemInstruction = `
-You are an expert game account broker. Your task is to analyze one or more screenshots/collages of an account for the game: **${gameName}** and generate a highly attractive, accurate, and professional sales description.
+    const extractionInstruction = `
+You are an expert game data extractor. Your task is to analyze this single screenshot from the game **${gameName}** and extract all visible stats, levels, resources, items, player IDs, and account details.
+
+CRITICAL RULES:
+1. **NO HALLUCINATIONS:** List ONLY what is directly visible. If a resource count, player ID, character, or level is not visible in this screenshot, do not list it.
+2. **NUMBERS & CODES:** Transcribe every digit of any Player ID, User ID, UID, Account ID, level, or resource balance (gold, gems, stardust, coins, win rate, matches) with 100% precision. Pay close attention to visually similar characters (like '8' vs '0', '5' vs 'S').
+3. **VISUAL DETECTIONS:** Identify character names, weapon names, skin names, or items clearly. Note whether they are "OWNED/UNLOCKED" (fully colored) or "LOCKED/NOT OWNED" (greyed out/faded).
+4. **NO PROSE:** Output a clean, bulleted list of raw facts. Do not write a sales description or conversational text.
+`;
+
+    try {
+      const response = await callGeminiWithFallback(ai, [
+        {
+          role: 'user',
+          parts: [singleImagePart, { text: extractionInstruction }]
+        }
+      ], {
+        temperature: 0.0
+      });
+      return response.text || '';
+    } catch (err) {
+      console.error(`[Extraction Step] Failed to analyze screenshot ${index + 1}:`, err);
+      return `[Screenshot ${index + 1} Error: Failed to analyze]`;
+    }
+  });
+
+  const rawExtractions = await Promise.all(extractPromises);
+  console.log(`[Gemini Pipeline] Successfully completed Step 1 (Factual Extraction) for ${imageBuffers.length} images.`);
+
+  // Step 2: Synthesis and Template/Formatting compilation
+  const synthesisInstruction = `
+You are an expert game account broker. Your task is to review the raw data extracted from several screenshots and compile it into a highly attractive, accurate, and professional sales description for the game: **${gameName}**.
 
 CRITICAL RULES FOR ACCURACY & ZERO HALLUCINATION:
-1. **NO HALLUCINATIONS / STRICT EVIDENCE-BASED LISTING:** Under no circumstances may you guess, estimate, assume, or invent any statistic, level, asset, item, skin, character, or value. Everything you write in the description MUST be directly visible in the screenshots.
-2. **STRICT STATS & RESOURCES RULE:** If a statistic or resource balance (such as Matches Played, Win Rate, Likes, Level, KD Ratio, Rank, MMR, Battle Points, Diamonds, Gems, Tickets, Gold, Stardust, Magic Dust, Fragments, etc.) is NOT visible in the screenshots, you must **COMPLETELY DELETE/OMIT** that line or section from the output. Never invent placeholder numbers.
+1. **STRICT EVIDENCE-BASED COMPILATION:** Under no circumstances may you guess, estimate, assume, or invent any statistic, level, asset, item, skin, character, or value. Everything you write in the description MUST be directly present in the "EXTRACTED RAW DATA" section below.
+2. **STRICT STATS & RESOURCES RULE:** If a statistic or resource balance (such as Matches Played, Win Rate, Likes, Level, KD Ratio, Rank, MMR, Battle Points, Diamonds, Gems, Tickets, Gold, Stardust, Magic Dust, Fragments, etc.) is NOT present in the raw data, you must **COMPLETELY DELETE/OMIT** that line or section from the output. Never invent placeholder numbers.
 3. **DO NOT CONFUSE MILESTONES/TIERS WITH ACTUAL BALANCES (CRITICAL):**
-   - Screens often show static UI labels, progress bar milestones, achievement requirements, or level tier thresholds (for example, milestone markers showing 4000, 3000, 2000, 400, 200, 100 points to unlock rewards).
-   - Do NOT assume these static milestone tier markers or limits are the user's actual resource balances.
-   - A player's active resource balance is ONLY valid if displayed in the account's active top status bar (e.g., next to the shop) or in a clear inventory list. If the lobby/inventory screen displaying these actual balances is not provided, **COMPLETELY OMIT** those balances. Never map milestone numbers to resources.
-4. **VISUAL OWNED VS LOCKED ITEMS DETECTION (CRITICAL FOR SKINS/HEROES/WEAPONS):**
-   - You must carefully analyze the visual state of item cards, hero cards, or skins in gallery/catalog grids.
-   - **Owned/Unlocked Assets:** These are fully colored, bright, vivid, and have no lock symbols or purchase prices.
-   - **Locked/Not Owned Assets:** These are faded, greyed out, darkened, desaturated, or semi-transparent. They often display lock icons, purchase prices (e.g., in diamonds/gold), or "Get/Buy" buttons.
-   - **Faction/Category Counters (e.g., "Grand (2/105)"):** If a grid header displays a fraction like \`Category (Numerator/Denominator)\`, the numerator is the actual count of owned assets, and the denominator is the total catalog size. You must ONLY list the fully colored (owned) assets. For example, if a grid is titled "Grand (2/105)" and shows only 2 colored skins (Leona Karina, Fluffy Dream Floryn) and the rest are greyed out (Arrow of Spring Miya, Mistbender Nana, Obi-Wan Kenobi Alucard, etc.), you must **ONLY list the 2 colored skins**. Do NOT include the faded/greyed-out skins in your output. This applies to skins, heroes, characters, emotes, weapons, cards, and collectibles across all games (MLBB, Brawl Stars, Clash of Clans, Free Fire, PUBG, etc.).
+   - If the raw data indicates milestone thresholds or levels to unlock rewards (e.g. 4000, 3000, 2000 points to unlock rewards), do NOT assume these are the user's actual resource balances. Only list actual balances if they are explicitly stated as the player's active current balance.
+4. **OWNED VS LOCKED ITEMS:**
+   - Only list assets, characters, skins, or weapons that are explicitly marked as "OWNED" or "UNLOCKED" in the raw data. Do NOT include assets that are marked as "LOCKED/NOT OWNED" or greyed out.
 5. **STRICT GAME ID / USER ID / UID RULE (CRITICAL):**
-   - Game account screenshots (specifically profile, settings, or main lobby screens) often display a Game ID, User ID, UID, Account ID, or Character ID (for example: "ID: 12345678 (2041)" or "UID: 987654321").
-   - You must extract and transcribe this ID/UID with 100% precision. Pay extremely close attention to every digit. Do NOT confuse numbers/characters (e.g., do not misread '8' as '0', '5' as 'S', '1' as 'l', or '6' as '8'). Double check each character against the image.
-   - Under no circumstances guess, extrapolate, or invent a placeholder or random ID.
-   - If no player ID/UID is clearly visible and legible in the screenshots, or if it is blurred, cut off, or illegible, you MUST NOT output it. You must **COMPLETELY DELETE/OMIT** the ID/UID field or line from the final description.
+   - If a Game ID, User ID, UID, Account ID, or Character ID is present in the raw data, transcribe it exactly. Do NOT alter a single digit.
+   - If no player ID/UID is present in the raw data, you must **COMPLETELY DELETE/OMIT** the ID/UID field or line from the final description.
 6. **SPECIALIZED RULES FOR POKÉMON GO (PG / POKÉMON GO) ACCOUNTS:**
-   - **Trainer Profile & Stats:** Look at the Trainer Profile screen (which shows the avatar, trainer name, level e.g. "50", current XP, team logo Instinct/Valor/Mystic, and Start Date e.g. "Start Date: 2016-07-06"). It also lists Medals/Stats like "Pokémon Caught: 104,821".
-     - Extract the Trainer Nickname, Level, XP, Team Name, and Start Date exactly. If the Trainer Profile screen is not provided, omit these.
-     - **CRITICAL:** Do NOT confuse the "Total Pokémon Caught" count (from the profile stats, e.g., "104,821") with the current Pokémon inventory storage count (displayed on the Pokémon list inventory screen as "850/900", where 850 is the current inventory size and 900 is the storage limit). These are completely different metrics!
-   - **Shiny, Legendary, and Shiny Legendary Counts:**
-     - Pokémon inventory screens often display a search filter in the top bar (e.g. searching "shiny", "legendary", or "shiny&legendary").
-     - Next to the search bar (or below it), a text header displays the count of matching Pokémon (for example, "123" or "123 / 1500" where 123 is the matching count).
-     - You MUST read this number from the filter header to get the exact counts of "Shinies", "Legendaries", or "Shiny Legendaries".
-     - Do NOT count the icons on the screen manually. Do NOT invent a count.
-     - If the search/filter count header is not visible (e.g. if the user didn't upload search results screens for "shiny" or "legendary"), you must **COMPLETELY OMIT** those counts. Never guess or fabricate them.
-   - **Stardust & Pokecoins:**
-     - Stardust (a purple star symbol with a count next to it) and Pokecoins (a gold coin symbol with a count next to it) are displayed at the bottom of the Pokémon inventory screen or on the profile screen. Extract them exactly. If they are not visible, omit them.
+   - **Trainer Profile & Stats:** Extract the Trainer Nickname, Level, XP, Team Name, and Start Date exactly as present in the raw data.
+   - **CRITICAL:** Do NOT confuse the "Total Pokémon Caught" count (e.g., "104,821") with the current Pokémon inventory storage count (e.g. "850/900").
+   - **Shiny, Legendary, and Shiny Legendary Counts:** Use only the counts explicitly present in the raw data (extracted from the search filter headers). Do not guess or extrapolate.
 
 SALES LAYOUT & FORMATTING:
 ${templatePref === 'CUSTOM' ? `
-You MUST follow this template structure EXACTLY. Extract the values from the screenshots and fill this template:
+You MUST follow this template structure EXACTLY. Extract the values from the raw data and fill this template:
 --- TEMPLATE START ---
 ${customTemplate}
 --- TEMPLATE END ---
-Do not add any "N/A", "0", or "Not shown" placeholders for missing items. If a placeholder line from the custom template cannot be filled because the item/value is not visible in the screenshots, **completely delete/omit that line** from your output.
-For fields requesting an ID, User ID, Game ID, UID, or Account ID: if the exact ID/UID is not clearly visible and legible in the screenshots, you MUST completely delete/omit the entire line from the description. Never guess or hallucinate any numbers or digits for the ID/UID.
+Do not add any "N/A", "0", or "Not shown" placeholders. If a placeholder line from the custom template cannot be filled because the value is missing from the raw data, **completely delete/omit that line** from your output.
+For fields requesting an ID, User ID, Game ID, UID, or Account ID: if the exact ID/UID is not present in the raw data, you MUST completely delete/omit the entire line from the description. Never guess or hallucinate any numbers or digits for the ID/UID.
 ` : `
 You have complete freedom to design the structure of the sales description dynamically to highlight the account's top features.
-- Identify the game's core high-value assets shown in the screenshots (e.g. rare characters, levels, skins, rank, premium items, resources).
+- Identify the game's core high-value assets listed in the raw data (e.g. rare characters, levels, skins, rank, premium items, resources).
 - Organize the layout to make the account look as stacked, premium, and attractive as possible to buyers.
 - Format the output beautifully using bold headings, spacers (e.g. ━━━━━━━━━━━━━━━━━━), emojis, and bullet points.
 - Include a professional "Guarantees" section at the bottom (e.g. Email/Nickname changeable, Safe account, etc.).
@@ -116,9 +134,17 @@ You have complete freedom to design the structure of the sales description dynam
 Your output must consist ONLY of the generated sales description. Do not add any markdown block wrappers (like \`\`\`) around the description itself, just output the plain formatted text. Do not add any conversational text before or after the description.
 `;
 
+  // Build the synthesis user prompt containing the combined raw data
+  let synthesisPrompt = `
+Here is the raw factual data extracted from the account screenshots:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${rawExtractions.map((ext, idx) => `[SCREENSHOT ${idx + 1} EXTRACTIONS]:\n${ext}`).join('\n\n')}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+`;
+
   const contents = [];
 
-  // Add visual few-shot reference examples as conversational turns
+  // Add visual few-shot reference examples as conversational turns to show style
   for (const example of fewShotExamples) {
     if (example.imageBuffers && example.imageBuffers.length > 0) {
       const parts = example.imageBuffers.map((buf) => ({
@@ -150,16 +176,16 @@ Your output must consist ONLY of the generated sales description. Do not add any
     }
   }
 
-  // Add the current user turn containing active images
+  // Add the current user turn containing the compiled raw data text
   contents.push({
     role: 'user',
-    parts: imageParts
+    parts: [{ text: synthesisPrompt }]
   });
 
   try {
     const response = await callGeminiWithFallback(ai, contents, {
       temperature: 0.0,
-      systemInstruction: systemInstruction
+      systemInstruction: synthesisInstruction
     });
 
     // Remove template boundaries if the model accidentally included them
@@ -168,7 +194,7 @@ Your output must consist ONLY of the generated sales description. Do not add any
     text = text.replace('--- TEMPLATE END ---', '');
     return text.trim();
   } catch (error) {
-    console.error('Error calling Gemini API:', error);
+    console.error('Error during Synthesis Step in Gemini API:', error);
     throw error;
   }
 }
