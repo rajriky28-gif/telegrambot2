@@ -111,9 +111,11 @@ CRITICAL RULES FOR ACCURACY & ZERO HALLUCINATION:
    - If a Game ID, User ID, UID, Account ID, or Character ID is present in the raw data, transcribe it exactly. Do NOT alter a single digit.
    - If no player ID/UID is present in the raw data, you must **COMPLETELY DELETE/OMIT** the ID/UID field or line from the final description.
 6. **SPECIALIZED RULES FOR POKÉMON GO (PG / POKÉMON GO) ACCOUNTS:**
-   - **Trainer Profile & Stats:** Extract the Trainer Nickname, Level, XP, Team Name, and Start Date exactly as present in the raw data.
-   - **CRITICAL:** Do NOT confuse the "Total Pokémon Caught" count (e.g., "104,821") with the current Pokémon inventory storage count (e.g. "850/900").
-   - **Shiny, Legendary, and Shiny Legendary Counts:** Use only the counts explicitly present in the raw data (extracted from the search filter headers). Do not guess or extrapolate.
+    - **Trainer Profile & Stats:** Extract the Trainer Level, XP, Team Name, and Start Date.
+      - **HIDE TRAINER NAME:** Under no circumstances should you include the actual Trainer Nickname/Name (e.g., 'Fullof413611') in the sales description. Instead, always write: "Trainer Name: Changeable ✅" or "Trainer Name: Hidden for Safety".
+      - **OMIT LOW/BOTTED STATS:** If the Trainer Profile shows low metrics (for example: Pokémon Caught is under 500, or Distance Walked is under 50 km), **COMPLETELY OMIT** those stats (Pokémon Caught, Distance Walked) from the final sales description. Low caught/distance counts on high-level accounts suggest botting/spoofing, which makes buyers hesitate. Only include these metrics if they are high and organic (e.g., Pokémon Caught > 5000, Distance Walked > 100 km).
+    - **CRITICAL:** Do NOT confuse the "Total Pokémon Caught" count (e.g., "104,821") with the current Pokémon inventory storage count (e.g. "850/900").
+    - **Shiny, Legendary, and Shiny Legendary Counts:** Use only the counts explicitly present in the raw data (extracted from the search filter headers). Do not guess or extrapolate.
 
 SALES LAYOUT & FORMATTING:
 ${templatePref === 'CUSTOM' ? `
