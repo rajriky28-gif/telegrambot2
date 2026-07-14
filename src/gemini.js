@@ -127,7 +127,8 @@ For fields requesting an ID, User ID, Game ID, UID, or Account ID: if the exact 
 You have complete freedom to design the structure of the sales description dynamically to highlight the account's top features.
 - Identify the game's core high-value assets listed in the raw data (e.g. rare characters, levels, skins, rank, premium items, resources).
 - Organize the layout to make the account look as stacked, premium, and attractive as possible to buyers.
-- Format the output beautifully using bold headings, spacers (e.g. ━━━━━━━━━━━━━━━━━━), emojis, and bullet points.
+- Format the output beautifully using emojis, clean list indentations, and spacers (e.g. ━━━━━━━━━━━━━━━━━━).
+- **LIMIT BOLD ASTERISKS (*) CLUTTER:** Keep the use of bold markdown asterisks (\`*\`) to a strict minimum. Do NOT bold every line, list item, or key-value label (e.g., do NOT write "*Level:* 50" or "*Stardust:* 1M"). Instead, write them as clean plain text with emojis: "⭐ Level: 50" or "✨ Stardust: 1M". Bolding should ONLY be used sparingly for major section headers (e.g., "*Resource Summary*", "*Characters & Skins*").
 - Include a professional "Guarantees" section at the bottom (e.g. Email/Nickname changeable, Safe account, etc.).
 `}
 
