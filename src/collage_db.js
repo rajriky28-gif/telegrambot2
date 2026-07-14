@@ -1,52 +1,62 @@
-const { Redis } = require('@upstash/redis');
+const { sql } = require('@vercel/postgres');
 
-const url = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
-const token = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
+const isPostgresEnabled = () => {
+  return !!(process.env.POSTGRES_URL || process.env.POSTGRES_PRISMA_URL || process.env.POSTGRES_URL_NON_POOLING);
+};
 
 // In-memory fallback for local development/testing without environment variables
-const memoryDb = {};
-
-let redis = null;
-
-if (url && token) {
-  try {
-    redis = new Redis({ url, token });
-    console.log("Redis client initialized successfully.");
-  } catch (error) {
-    console.error("Failed to initialize Redis client:", error);
-  }
-} else {
-  console.log("Redis credentials not found. Using in-memory fallback (only suitable for single-instance local testing).");
-}
+const memoryDb = new Map();
+const memorySessions = new Map();
 
 /**
- * Adds a photo file_id to the user's current list of images.
+ * Adds a photo file_id/url to the user's current list of images.
  * @param {string|number} userId - The Telegram user ID.
- * @param {string} fileId - The Telegram photo file_id.
+ * @param {string} fileId - The Telegram photo file_id or download URL.
  */
 async function addImage(userId, fileId) {
-  const key = `collage_bot:${userId}`;
-  if (redis) {
-    await redis.rpush(key, fileId);
-  } else {
-    if (!memoryDb[key]) {
-      memoryDb[key] = [];
+  const userIdStr = String(userId);
+  if (!isPostgresEnabled()) {
+    if (!memoryDb.has(userIdStr)) {
+      memoryDb.set(userIdStr, []);
     }
-    memoryDb[key].push(fileId);
+    memoryDb.get(userIdStr).push(fileId);
+    console.log(`[Collage Memory DB] Added image for user ${userIdStr}. Total: ${memoryDb.get(userIdStr).length}`);
+    return;
+  }
+
+  try {
+    await sql`
+      INSERT INTO collage_images (chat_id, file_id)
+      VALUES (${userIdStr}, ${fileId});
+    `;
+    console.log(`[Collage Postgres DB] Added image for user ${userIdStr}`);
+  } catch (error) {
+    console.error('Error adding collage image to Postgres:', error);
+    throw error;
   }
 }
 
 /**
- * Retrieves the current list of photo file_ids for a user.
+ * Retrieves the current list of photo file_ids/urls for a user.
  * @param {string|number} userId - The Telegram user ID.
- * @returns {Promise<string[]>} List of file_ids.
+ * @returns {Promise<string[]>} List of file_ids/urls.
  */
 async function getImages(userId) {
-  const key = `collage_bot:${userId}`;
-  if (redis) {
-    return await redis.lrange(key, 0, -1);
-  } else {
-    return memoryDb[key] || [];
+  const userIdStr = String(userId);
+  if (!isPostgresEnabled()) {
+    return memoryDb.get(userIdStr) || [];
+  }
+
+  try {
+    const { rows } = await sql`
+      SELECT file_id FROM collage_images
+      WHERE chat_id = ${userIdStr}
+      ORDER BY created_at ASC;
+    `;
+    return rows.map(row => row.file_id);
+  } catch (error) {
+    console.error('Error fetching collage images from Postgres:', error);
+    throw error;
   }
 }
 
@@ -55,48 +65,98 @@ async function getImages(userId) {
  * @param {string|number} userId - The Telegram user ID.
  */
 async function clearImages(userId) {
-  const key = `collage_bot:${userId}`;
-  if (redis) {
-    await redis.del(key);
-  } else {
-    delete memoryDb[key];
+  const userIdStr = String(userId);
+  if (!isPostgresEnabled()) {
+    memoryDb.delete(userIdStr);
+    console.log(`[Collage Memory DB] Cleared images for user ${userIdStr}`);
+    return;
+  }
+
+  try {
+    await sql`
+      DELETE FROM collage_images
+      WHERE chat_id = ${userIdStr};
+    `;
+    console.log(`[Collage Postgres DB] Cleared images for user ${userIdStr}`);
+  } catch (error) {
+    console.error('Error clearing collage images from Postgres:', error);
+    throw error;
   }
 }
 
 /**
  * Saves the message ID of the last sent keyboard control panel.
+ * @param {string|number} userId - The Telegram user ID.
+ * @param {number} messageId - The Telegram message ID.
  */
 async function setLastMessageId(userId, messageId) {
-  const key = `collage_bot_msg:${userId}`;
-  if (redis) {
-    await redis.set(key, messageId);
-  } else {
-    memoryDb[key] = messageId;
+  const userIdStr = String(userId);
+  if (!isPostgresEnabled()) {
+    memorySessions.set(userIdStr, messageId);
+    return;
+  }
+
+  try {
+    await sql`
+      INSERT INTO collage_sessions (chat_id, last_message_id, updated_at)
+      VALUES (${userIdStr}, ${messageId}, CURRENT_TIMESTAMP)
+      ON CONFLICT (chat_id)
+      DO UPDATE SET 
+        last_message_id = EXCLUDED.last_message_id,
+        updated_at = CURRENT_TIMESTAMP;
+    `;
+  } catch (error) {
+    console.error('Error updating collage session last_message_id in Postgres:', error);
+    throw error;
   }
 }
 
 /**
  * Retrieves the message ID of the last sent keyboard control panel.
+ * @param {string|number} userId - The Telegram user ID.
+ * @returns {Promise<number|null>}
  */
 async function getLastMessageId(userId) {
-  const key = `collage_bot_msg:${userId}`;
-  if (redis) {
-    const val = await redis.get(key);
-    return val ? parseInt(val, 10) : null;
-  } else {
-    return memoryDb[key] ? parseInt(memoryDb[key], 10) : null;
+  const userIdStr = String(userId);
+  if (!isPostgresEnabled()) {
+    return memorySessions.get(userIdStr) || null;
+  }
+
+  try {
+    const { rows } = await sql`
+      SELECT last_message_id FROM collage_sessions
+      WHERE chat_id = ${userIdStr};
+    `;
+    if (rows && rows.length > 0) {
+      return rows[0].last_message_id;
+    }
+    return null;
+  } catch (error) {
+    console.error('Error fetching last_message_id from Postgres:', error);
+    return null;
   }
 }
 
 /**
  * Deletes the saved message ID.
+ * @param {string|number} userId - The Telegram user ID.
  */
 async function clearLastMessageId(userId) {
-  const key = `collage_bot_msg:${userId}`;
-  if (redis) {
-    await redis.del(key);
-  } else {
-    delete memoryDb[key];
+  const userIdStr = String(userId);
+  if (!isPostgresEnabled()) {
+    memorySessions.delete(userIdStr);
+    return;
+  }
+
+  try {
+    await sql`
+      UPDATE collage_sessions
+      SET last_message_id = NULL, updated_at = CURRENT_TIMESTAMP
+      WHERE chat_id = ${userIdStr};
+    `;
+  } catch (error) {
+    console.error('Error clearing last_message_id in Postgres:', error);
+    throw error;
   }
 }
 

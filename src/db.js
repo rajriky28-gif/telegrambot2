@@ -116,6 +116,27 @@ async function initDb() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `;
+
+    // Create the collage images list table if it doesn't exist
+    await sql`
+      CREATE TABLE IF NOT EXISTS collage_images (
+        chat_id VARCHAR(50) NOT NULL,
+        file_id VARCHAR(500) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `;
+    await sql`
+      CREATE INDEX IF NOT EXISTS idx_collage_images_chat_id ON collage_images(chat_id);
+    `;
+
+    // Create collage sessions table if it doesn't exist
+    await sql`
+      CREATE TABLE IF NOT EXISTS collage_sessions (
+        chat_id VARCHAR(50) PRIMARY KEY,
+        last_message_id INTEGER,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `;
     
     // Prune old processed updates (older than 1 day) to keep db clean
     await sql`
