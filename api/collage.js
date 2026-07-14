@@ -75,16 +75,39 @@ bot.use(async (ctx, next) => {
 
 // Handle start and help commands
 bot.command(['start', 'help'], async (ctx) => {
+  const userId = ctx.from.id;
+  try {
+    await collageDb.clearImages(userId);
+    await collageDb.clearLastMessageId(userId);
+  } catch (err) {
+    console.error("Error clearing queue on start:", err);
+  }
+
   await ctx.reply(
     `📸 *Collage Maker Bot* 📸\n\n` +
     `Send me **2 or more images** as photos. I will combine them into a beautiful collage!\n\n` +
     `*How to use:*\n` +
     `1. Send images to me one by one. I'll add them to your queue.\n` +
     `2. Choose a grid size (e.g., **2x2**, **3x3**, up to **6x6**) below to generate your collage.\n` +
-    `3. Click **Clear & Restart** if you want to clear your current queue and start fresh.\n\n` +
+    `3. Click **Clear & Restart** or send /clear if you want to clear your current queue and start fresh.\n\n` +
     `_Ready when you are! Send me your first photo._`,
     { parse_mode: 'Markdown' }
   );
+});
+
+// Handle clear command
+bot.command('clear', async (ctx) => {
+  const userId = ctx.from.id;
+  try {
+    await collageDb.clearImages(userId);
+    await collageDb.clearLastMessageId(userId);
+    await ctx.reply(
+      "❌ Your collage queue has been cleared! Send some new photos to start fresh."
+    );
+  } catch (error) {
+    console.error("Error clearing queue via command:", error);
+    await ctx.reply("❌ Error resetting your queue.");
+  }
 });
 
 // Handle incoming photos
@@ -99,8 +122,10 @@ bot.on('message:photo', async (ctx) => {
     }
 
     // Telegram sends photos in an array of different sizes.
-    // Select the highest resolution version available to maximize image quality.
-    const photo = ctx.message.photo[ctx.message.photo.length - 1];
+    // Select a medium-high resolution version (typically second to last in the array, e.g. ~800px-1280px wide).
+    // This dramatically reduces download times and memory overhead during collage generation, with zero loss in grid quality.
+    const photoIndex = Math.max(0, ctx.message.photo.length - 2);
+    const photo = ctx.message.photo[photoIndex];
     const fileId = photo.file_id;
 
     // Resolve download URL immediately to avoid Vercel serverless execution timeout during collage generation
@@ -234,6 +259,14 @@ bot.callbackQuery(['collage_grid_2', 'collage_grid_3', 'collage_grid_4', 'collag
 
     // Delete status message
     await ctx.api.deleteMessage(ctx.chat.id, statusMessage.message_id).catch(() => {});
+
+    // Send session reset confirmation
+    await ctx.reply(
+      "✅ *Collage generated successfully!*\n\n" +
+      "🧹 *Queue Cleared:* Your queue has been reset and is ready for the next session.\n" +
+      "📸 Send me **2 or more new photos** whenever you want to create another collage!",
+      { parse_mode: 'Markdown' }
+    );
 
   } catch (error) {
     console.error("Error generating collage:", error);

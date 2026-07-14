@@ -82,33 +82,32 @@ async function createCollage(imageUrls, gridDim = 2) {
   console.log(`Grid config: ${G}x${G}, total images in batch: ${K}, rows needed: ${R}`);
   console.log(`Canvas dimensions: ${W_total}x${H_total}. Processing cells...`);
 
-  const processedImages = [];
-
-  for (let idx = 0; idx < K; idx++) {
-    const r = Math.floor(idx / G);
-    const c = idx % G;
-    
-    const Y = M + r * (H_cell + P);
-    const X = M + c * (W_cell + P);
-    
-    const buf = imageBuffers[idx];
-    
-    // Resize image to fit the cell exactly using 'contain' and auto-orient rotation.
-    // This guarantees that no image is cropped or rotated sideways.
-    const resizedBuf = await sharp(buf)
-      .rotate()
-      .resize(W_cell, H_cell, {
-        fit: 'contain',
-        background: { r: 0, g: 0, b: 0 }
-      })
-      .toBuffer();
+  // Resize images to fit the cells in parallel using Promise.all
+  const processedImages = await Promise.all(
+    imageBuffers.map(async (buf, idx) => {
+      const r = Math.floor(idx / G);
+      const c = idx % G;
       
-    processedImages.push({
-      input: resizedBuf,
-      left: X,
-      top: Y
-    });
-  }
+      const Y = M + r * (H_cell + P);
+      const X = M + c * (W_cell + P);
+      
+      // Resize image to fit the cell exactly using 'contain' and auto-orient rotation.
+      // This guarantees that no image is cropped or rotated sideways.
+      const resizedBuf = await sharp(buf)
+        .rotate()
+        .resize(W_cell, H_cell, {
+          fit: 'contain',
+          background: { r: 0, g: 0, b: 0 }
+        })
+        .toBuffer();
+        
+      return {
+        input: resizedBuf,
+        left: X,
+        top: Y
+      };
+    })
+  );
 
   console.log("Canvas composite starting...");
 
