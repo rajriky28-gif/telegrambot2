@@ -190,6 +190,32 @@ bot.callbackQuery('collage_clear', async (ctx) => {
   }
 });
 
+// Handle clear & restart button
+bot.callbackQuery('collage_clear_restart', async (ctx) => {
+  const userId = ctx.from.id;
+  try {
+    await collageDb.clearImages(userId);
+    await collageDb.clearLastMessageId(userId);
+    await ctx.answerCallbackQuery({ text: "Queue cleared & restarted!" }).catch(() => {});
+    await ctx.editMessageReplyMarkup().catch(() => {});
+    
+    await ctx.reply(
+      `📸 *Collage Maker Bot* 📸\n\n` +
+      `Send me **2 or more images** as photos. I will combine them into a beautiful collage!\n\n` +
+      `*How to use:*\n` +
+      `1. Send images to me one by one. I'll add them to your queue.\n` +
+      `2. Choose a grid size (e.g., **2x2**, **3x3**, up to **6x6**) below to generate your collage.\n` +
+      `3. Click **Clear & Restart** or send /clear if you want to clear your current queue and start fresh.\n\n` +
+      `_Ready when you are! Send me your first photo._`,
+      { parse_mode: 'Markdown' }
+    );
+  } catch (error) {
+    console.error("Error in clear & restart handler:", error);
+    await ctx.answerCallbackQuery({ text: "Error restarting bot" }).catch(() => {});
+    await ctx.reply("❌ Error resetting your queue.");
+  }
+});
+
 // Handle grid layout generation
 bot.callbackQuery(['collage_grid_2', 'collage_grid_3', 'collage_grid_4', 'collage_grid_5', 'collage_grid_6'], async (ctx) => {
   const userId = ctx.from.id;
@@ -252,20 +278,30 @@ bot.callbackQuery(['collage_grid_2', 'collage_grid_3', 'collage_grid_4', 'collag
         caption: `🎉 Quick preview of your ${gridDim}x${gridDim} collage (${imageUrls.length} photos):`,
       });
 
+      const restartKeyboard = new InlineKeyboard()
+        .text("🔄 Clear & Restart", "collage_clear_restart");
+
       await ctx.replyWithDocument(new InputFile(buffer, `collage_${gridDim}x${gridDim}_highres.jpg`), {
         caption: `💾 Here is the Full HD (uncompressed) file!`,
+        reply_markup: restartKeyboard
       });
     }
 
     // Delete status message
     await ctx.api.deleteMessage(ctx.chat.id, statusMessage.message_id).catch(() => {});
 
+    const restartKeyboard = new InlineKeyboard()
+      .text("🔄 Clear & Restart", "collage_clear_restart");
+
     // Send session reset confirmation
     await ctx.reply(
       "✅ *Collage generated successfully!*\n\n" +
       "🧹 *Queue Cleared:* Your queue has been reset and is ready for the next session.\n" +
       "📸 Send me **2 or more new photos** whenever you want to create another collage!",
-      { parse_mode: 'Markdown' }
+      { 
+        parse_mode: 'Markdown',
+        reply_markup: restartKeyboard
+      }
     );
 
   } catch (error) {
