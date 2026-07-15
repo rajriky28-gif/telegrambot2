@@ -57,17 +57,17 @@ async function createCollage(imageUrls, gridDim = 2) {
   const M = 15; // outer margin/border around the grid (in pixels)
   
   // Standardize cell width based on grid dimension G to keep final collage high-res and sharp
-  let W_cell = 1000;
+  let W_cell = 500;
   if (G === 2) {
-    W_cell = 1200;
+    W_cell = 600;
   } else if (G === 3) {
-    W_cell = 1000;
+    W_cell = 500;
   } else if (G === 4) {
-    W_cell = 900;
+    W_cell = 400;
   } else if (G === 5) {
-    W_cell = 800;
+    W_cell = 350;
   } else if (G === 6) {
-    W_cell = 800;
+    W_cell = 300;
   }
 
   // Calculate cell height dynamically to preserve the aspect ratio of the original images
@@ -137,7 +137,7 @@ async function createCollage(imageUrls, gridDim = 2) {
  */
 async function createCollageBatches(imageUrls, gridDim = 2) {
   const G = parseInt(gridDim, 10);
-  const batchSize = G * 2;
+  const batchSize = G * G;
   const batches = [];
   
   for (let i = 0; i < imageUrls.length; i += batchSize) {
